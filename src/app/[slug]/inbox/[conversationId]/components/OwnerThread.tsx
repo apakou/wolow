@@ -27,10 +27,10 @@ export default function OwnerThread({
     });
   }, [slug, conversationId]);
   const header = (
-    <div className="px-4 py-3 flex items-center gap-3">
+    <div className="px-4 py-3.5 flex items-center gap-3">
       <a
         href={`/${slug}/inbox`}
-        className="shrink-0 text-zinc-400 hover:text-white transition-colors"
+        className="shrink-0 w-9 h-9 rounded-full bg-surface-light/60 flex items-center justify-center text-slate-400 hover:text-white hover:bg-surface-light transition-all"
         aria-label="Back to inbox"
       >
         <svg
@@ -46,9 +46,9 @@ export default function OwnerThread({
           />
         </svg>
       </a>
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-white truncate">{conversationLabel}</p>
-        <p className="text-xs text-zinc-500">{displayName}&apos;s inbox</p>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold text-white truncate">{conversationLabel}</p>
+        <p className="text-xs text-muted">{displayName}&apos;s inbox</p>
       </div>
     </div>
   );

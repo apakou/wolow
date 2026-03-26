@@ -22,12 +22,28 @@ type Conversation = {
   } | null;
 };
 
+type Filter = "all" | "unread";
+
+// Deterministic avatar colors from conversation index
+const AVATAR_COLORS = [
+  "bg-blue-500",
+  "bg-violet-500",
+  "bg-emerald-500",
+  "bg-orange-500",
+  "bg-rose-500",
+  "bg-sky-500",
+];
+
 export default function OwnerInbox({ roomId, slug, displayName }: Props) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [shareableLink, setShareableLink] = useState(`/${slug}`);
   const [copied, setCopied] = useState(false);
   const [canShare, setCanShare] = useState(false);
+  const [filter, setFilter] = useState<Filter>("all");
+
+  const unreadTotal = conversations.reduce((sum, c) => sum + c.unread_count, 0);
+  const filtered = filter === "unread" ? conversations.filter((c) => c.unread_count > 0) : conversations;
 
   useEffect(() => {
     setShareableLink(`${window.location.origin}/${slug}`);
@@ -130,40 +146,63 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
   }
 
   return (
-    <div className="flex flex-col h-dvh bg-zinc-950">
-      {/* Header */}
-      <header className="shrink-0 border-b border-zinc-800 bg-zinc-950 px-4 pt-3 pb-2 flex flex-col gap-2">
+    <div className="flex flex-col h-dvh bg-app-gradient">
+      {/* Header with gradient */}
+      <header className="shrink-0 bg-header-gradient px-4 pt-5 pb-4 flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <h1 className="text-base font-semibold text-white">Your inbox</h1>
-          <span className="text-xs text-zinc-500">{displayName}</span>
+          <h1 className="text-lg font-bold text-white">Messages</h1>
+          <span className="text-xs text-slate-400 bg-surface-light/50 px-2.5 py-1 rounded-full">{displayName}</span>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <p className="text-xs text-zinc-500">Share this link to receive messages</p>
-          <div className="flex gap-2">
-            <input
-              readOnly
-              value={shareableLink}
-              onFocus={(e) => e.target.select()}
-              className="flex-1 min-w-0 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5
-                         text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-700 cursor-text"
-            />
+
+        {/* Share bar */}
+        <div className="flex gap-2">
+          <input
+            readOnly
+            value={shareableLink}
+            onFocus={(e) => e.target.select()}
+            className="flex-1 min-w-0 bg-surface/60 backdrop-blur border border-border rounded-xl px-3 py-2
+                       text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-accent cursor-text"
+          />
+          <button
+            onClick={handleCopy}
+            className="shrink-0 text-xs font-medium bg-surface-light/60 backdrop-blur hover:bg-surface-light text-slate-200
+                       px-3.5 py-2 rounded-xl transition-colors border border-border"
+          >
+            {copied ? "Copied!" : "Copy"}
+          </button>
+          {canShare && (
             <button
-              onClick={handleCopy}
-              className="shrink-0 text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200
-                         px-3 py-1.5 rounded-lg transition-colors"
+              onClick={handleShare}
+              className="shrink-0 text-xs font-medium bg-accent text-white
+                         px-3.5 py-2 rounded-xl transition-all hover:opacity-90"
             >
-              {copied ? "Copied!" : "Copy"}
+              Share
             </button>
-            {canShare && (
-              <button
-                onClick={handleShare}
-                className="shrink-0 text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white
-                           px-3 py-1.5 rounded-lg transition-colors"
-              >
-                Share
-              </button>
-            )}
-          </div>
+          )}
+        </div>
+
+        {/* Filter pills */}
+        <div className="flex gap-2 mt-1">
+          <button
+            onClick={() => setFilter("all")}
+            className={`text-xs font-medium px-4 py-1.5 rounded-full transition-all ${
+              filter === "all"
+                ? "bg-accent text-white shadow-lg shadow-accent-glow"
+                : "bg-surface-light/50 text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Inbox {conversations.length > 0 && conversations.length}
+          </button>
+          <button
+            onClick={() => setFilter("unread")}
+            className={`text-xs font-medium px-4 py-1.5 rounded-full transition-all ${
+              filter === "unread"
+                ? "bg-accent text-white shadow-lg shadow-accent-glow"
+                : "bg-surface-light/50 text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Unread {unreadTotal > 0 && unreadTotal}
+          </button>
         </div>
       </header>
 
@@ -172,44 +211,56 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
         {!loaded ? (
           <div className="px-4 py-4 flex flex-col gap-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-16 rounded-xl animate-pulse bg-zinc-800" />
+              <div key={i} className="h-[72px] rounded-2xl animate-pulse bg-surface-light/40" />
             ))}
           </div>
-        ) : conversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-1 px-8 text-center">
-            <p className="text-zinc-400 text-sm font-medium">No conversations yet</p>
-            <p className="text-zinc-600 text-xs">Share your link to get started!</p>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full gap-2 px-8 text-center">
+            <div className="w-12 h-12 rounded-full bg-surface-light flex items-center justify-center mb-2">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-muted">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 0 1-.825-.242m9.345-8.334a2.126 2.126 0 0 0-.476-.095 48.64 48.64 0 0 0-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0 0 11.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
+              </svg>
+            </div>
+            <p className="text-slate-300 text-sm font-medium">
+              {filter === "unread" ? "All caught up!" : "No conversations yet"}
+            </p>
+            <p className="text-muted text-xs">
+              {filter === "unread" ? "No unread messages" : "Share your link to get started!"}
+            </p>
           </div>
         ) : (
-          <div className="flex flex-col">
-            {conversations.map((conv) => (
+          <div className="flex flex-col px-3 py-3 gap-1.5">
+            {filtered.map((conv, i) => (
               <a
                 key={conv.id}
                 href={`/${slug}/inbox/${conv.id}`}
-                className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800/60
-                           hover:bg-zinc-900/50 transition-colors"
+                className="flex items-center gap-3 px-3 py-3 rounded-2xl
+                           hover:bg-surface-light/50 transition-all active:scale-[0.98]"
               >
                 {/* Avatar */}
                 <div className="relative shrink-0">
-                  <div className="w-10 h-10 rounded-full bg-indigo-600/20 flex items-center justify-center">
-                    <span className="text-indigo-400 text-sm font-semibold">
+                  <div className={`w-11 h-11 rounded-full ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center`}>
+                    <span className="text-white text-sm font-bold">
                       {conv.label.replace("Anonymous #", "#")}
                     </span>
                   </div>
+                  {conv.unread_count > 0 && (
+                    <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-accent rounded-full border-2 border-background" />
+                  )}
                 </div>
                 {/* Text */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <p className={`text-sm truncate ${conv.unread_count > 0 ? "font-bold text-white" : "font-medium text-white"}`}>
+                    <p className={`text-sm truncate ${conv.unread_count > 0 ? "font-bold text-white" : "font-medium text-slate-200"}`}>
                       {conv.label}
                     </p>
                     {conv.last_message && (
-                      <span className={`text-[11px] shrink-0 ml-2 ${conv.unread_count > 0 ? "text-indigo-400" : "text-zinc-600"}`}>
+                      <span className={`text-[11px] shrink-0 ml-2 ${conv.unread_count > 0 ? "text-accent-light font-medium" : "text-muted"}`}>
                         {relativeTime(conv.last_message.created_at)}
                       </span>
                     )}
                   </div>
-                  <p className={`text-xs truncate mt-0.5 ${conv.unread_count > 0 ? "text-zinc-300" : "text-zinc-500"}`}>
+                  <p className={`text-xs truncate mt-0.5 ${conv.unread_count > 0 ? "text-slate-300" : "text-muted"}`}>
                     {conv.last_message
                       ? `${conv.last_message.is_owner ? "You: " : ""}${conv.last_message.content}`
                       : "No messages yet"}
@@ -217,12 +268,12 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
                 </div>
                 {/* Unread badge */}
                 {conv.unread_count > 0 ? (
-                  <span className="shrink-0 min-w-[20px] h-5 flex items-center justify-center text-[11px] font-bold text-white bg-indigo-600 px-1.5 rounded-full">
+                  <span className="shrink-0 min-w-[22px] h-[22px] flex items-center justify-center text-[11px] font-bold text-white bg-accent px-1.5 rounded-full">
                     {conv.unread_count}
                   </span>
                 ) : (
                   conv.message_count > 0 && (
-                    <span className="shrink-0 text-[11px] text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded-full">
+                    <span className="shrink-0 text-[11px] text-muted bg-surface-light px-2 py-0.5 rounded-full">
                       {conv.message_count}
                     </span>
                   )

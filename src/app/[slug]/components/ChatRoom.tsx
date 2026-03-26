@@ -28,16 +28,23 @@ export default function ChatRoom({ roomId, slug, displayName }: Props) {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-dvh bg-zinc-950 text-zinc-400 text-sm">
-        Something went wrong. Please refresh.
+      <div className="flex items-center justify-center h-dvh bg-app-gradient text-muted text-sm">
+        <div className="text-center flex flex-col items-center gap-3">
+          <div className="w-12 h-12 rounded-full bg-surface-light flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-red-400">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+            </svg>
+          </div>
+          <p className="text-slate-300">Something went wrong. Please refresh.</p>
+        </div>
       </div>
     );
   }
 
   if (!conversationId) {
     return (
-      <div className="flex items-center justify-center h-dvh bg-zinc-950">
-        <div className="h-6 w-6 border-2 border-zinc-600 border-t-white rounded-full animate-spin" />
+      <div className="flex items-center justify-center h-dvh bg-app-gradient">
+        <div className="h-7 w-7 border-2 border-border border-t-accent rounded-full animate-spin" />
       </div>
     );
   }

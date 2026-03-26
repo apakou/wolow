@@ -13,6 +13,7 @@ const securityHeaders = [
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
       "img-src 'self' data:",
       "font-src 'self'",
+      "worker-src 'self'",                               // required for service worker
       "frame-ancestors 'none'",
     ].join("; "),
   },
@@ -24,6 +25,13 @@ const nextConfig: NextConfig = {
       {
         source: "/(.*)",
         headers: securityHeaders,
+      },
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Service-Worker-Allowed", value: "/" },
+        ],
       },
     ];
   },

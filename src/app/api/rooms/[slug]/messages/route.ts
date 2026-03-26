@@ -30,23 +30,88 @@ export async function GET(req: Request, { params }: Params) {
   const url = new URL(req.url);
   const conversationId = url.searchParams.get("conversation_id");
 
+  const cookieStore = await cookies();
+  const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
+  const viewerIsOwner = !!ownerToken && ownerToken === room.owner_token;
+
   const supabase = await createClient();
   let query = supabase
     .from("messages")
-    .select("id, content, is_owner, created_at")
+    .select("id, content, is_owner, created_at, reply_to_message_id")
     .eq("room_id", room.id);
 
   if (conversationId) {
     query = query.eq("conversation_id", conversationId);
   }
 
-  const { data, error } = await query.order("created_at", { ascending: true });
+  let { data, error } = await query.order("created_at", { ascending: true });
+
+  if (error?.message?.includes("reply_to_message_id")) {
+    let fallbackQuery = supabase
+      .from("messages")
+      .select("id, content, is_owner, created_at")
+      .eq("room_id", room.id);
+
+    if (conversationId) {
+      fallbackQuery = fallbackQuery.eq("conversation_id", conversationId);
+    }
+
+    const fallback = await fallbackQuery.order("created_at", { ascending: true });
+    error = fallback.error;
+    data = (fallback.data ?? []).map((message) => ({
+      ...message,
+      reply_to_message_id: null,
+    }));
+  }
 
   if (error) {
     return NextResponse.json({ error: "Failed to fetch messages" }, { status: 500 });
   }
 
-  return NextResponse.json(data);
+  const messages = data ?? [];
+  if (messages.length === 0) {
+    return NextResponse.json(messages);
+  }
+
+  const messageIds = messages.map((message) => message.id);
+  const { data: reactions, error: reactionsError } = await supabase
+    .from("reactions")
+    .select("message_id, emoji, is_owner")
+    .in("message_id", messageIds);
+
+  if (reactionsError) {
+    return NextResponse.json({ error: "Failed to fetch reactions" }, { status: 500 });
+  }
+
+  const reactionMap = new Map<string, Map<string, { count: number; reactedByMe: boolean }>>();
+  for (const reaction of reactions ?? []) {
+    let perMessage = reactionMap.get(reaction.message_id);
+    if (!perMessage) {
+      perMessage = new Map();
+      reactionMap.set(reaction.message_id, perMessage);
+    }
+
+    const existing = perMessage.get(reaction.emoji) ?? { count: 0, reactedByMe: false };
+    existing.count += 1;
+    if (reaction.is_owner === viewerIsOwner) {
+      existing.reactedByMe = true;
+    }
+    perMessage.set(reaction.emoji, existing);
+  }
+
+  const enriched = messages.map((message) => {
+    const perEmoji = reactionMap.get(message.id);
+    const reactionList = [...(perEmoji?.entries() ?? [])]
+      .map(([emoji, payload]) => ({ emoji, count: payload.count, reactedByMe: payload.reactedByMe }))
+      .sort((a, b) => b.count - a.count || a.emoji.localeCompare(b.emoji));
+
+    return {
+      ...message,
+      reactions: reactionList,
+    };
+  });
+
+  return NextResponse.json(enriched);
 }
 
 export async function POST(req: Request, { params }: Params) {
@@ -104,14 +169,43 @@ export async function POST(req: Request, { params }: Params) {
       ? ((body as Record<string, unknown>).conversation_id as string)
       : null;
 
+  const replyToMessageId =
+    typeof (body as Record<string, unknown>).reply_to_message_id === "string"
+      ? ((body as Record<string, unknown>).reply_to_message_id as string)
+      : null;
+
   if (!conversationId) {
     return NextResponse.json({ error: "conversation_id is required" }, { status: 422 });
   }
 
   const supabase = await createClient();
+
+  if (replyToMessageId) {
+    const { data: targetMessage, error: targetError } = await supabase
+      .from("messages")
+      .select("id, conversation_id")
+      .eq("id", replyToMessageId)
+      .eq("room_id", room.id)
+      .single();
+
+    if (targetError || !targetMessage) {
+      return NextResponse.json({ error: "Reply target not found" }, { status: 422 });
+    }
+
+    if (targetMessage.conversation_id !== conversationId) {
+      return NextResponse.json({ error: "Reply target must be in the same conversation" }, { status: 422 });
+    }
+  }
+
   const { error } = await supabase
     .from("messages")
-    .insert({ room_id: room.id, content, is_owner, conversation_id: conversationId });
+    .insert({
+      room_id: room.id,
+      content,
+      is_owner,
+      conversation_id: conversationId,
+      reply_to_message_id: replyToMessageId,
+    });
 
   if (error) {
     console.error("[messages] insert error:", error.message);

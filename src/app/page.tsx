@@ -36,22 +36,30 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-zinc-950 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm flex flex-col gap-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-white tracking-tight">
-            Send me anonymous messages
-          </h1>
-          <p className="mt-2 text-sm text-zinc-400">
-            Create a link and share it — anyone can message you anonymously.
-          </p>
+    <main className="min-h-screen bg-app-gradient flex items-center justify-center px-4">
+      <div className="w-full max-w-sm flex flex-col gap-8">
+        {/* Logo / branding */}
+        <div className="text-center flex flex-col items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-accent flex items-center justify-center">
+            <svg width="32" height="32" viewBox="0 0 88 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M30.4 77.152C26.304 77.152 23.104 75.8293 20.8 73.184C18.5813 70.4533 17.0453 66.1013 16.192 60.128L13.504 41.696C13.4187 41.0133 13.248 40.544 12.992 40.288C12.736 40.032 12.352 39.904 11.84 39.904H8.384L8 38.496C9.70667 36.96 11.7547 35.7653 14.144 34.912C16.5333 33.9733 18.88 33.504 21.184 33.504C22.464 33.504 23.36 33.888 23.872 34.656C24.4693 35.424 24.9387 36.9173 25.28 39.136L28.608 62.176C29.2053 66.3573 29.888 69.216 30.656 70.752C31.424 72.288 32.576 73.056 34.112 73.056C36.5013 73.056 38.3787 71.6053 39.744 68.704C41.1947 65.7173 41.92 61.792 41.92 56.928C41.92 51.9787 41.28 46.9013 40 41.696C39.8293 41.0133 39.6587 40.544 39.488 40.288C39.3173 40.032 38.9333 39.904 38.336 39.904H35.008L34.624 38.496C36.2453 36.96 38.2507 35.7653 40.64 34.912C43.0293 33.9733 45.4187 33.504 47.808 33.504C49.0027 33.504 49.8987 33.9307 50.496 34.784C51.0933 35.552 51.52 37.0027 51.776 39.136L54.976 61.536C55.6587 66.144 56.384 69.216 57.152 70.752C58.0053 72.288 59.0293 73.056 60.224 73.056C62.528 73.056 64.3627 71.3493 65.728 67.936C67.1787 64.4373 67.904 59.9147 67.904 54.368C67.904 50.6133 67.52 47.3707 66.752 44.64C66.0693 41.824 64.9173 39.3493 63.296 37.216L62.272 35.808L63.168 34.784L73.92 33.504C74.176 36.832 74.304 39.776 74.304 42.336C74.304 53.2587 72.7253 61.792 69.568 67.936C66.496 74.08 62.0587 77.152 56.256 77.152C52.7573 77.152 50.112 76.256 48.32 74.464C46.528 72.672 45.0347 69.3867 43.84 64.608C42.1333 72.9707 37.6533 77.152 30.4 77.152Z" fill="white"/>
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-white tracking-tight">
+              Send me anonymous messages
+            </h1>
+            <p className="mt-2 text-sm text-muted">
+              Create a link and share it — anyone can message you anonymously.
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label
               htmlFor="display_name"
-              className="text-xs font-medium text-zinc-400 uppercase tracking-wide"
+              className="text-xs font-medium text-muted uppercase tracking-wide"
             >
               Your name <span className="normal-case font-normal">(optional)</span>
             </label>
@@ -62,10 +70,10 @@ export default function Home() {
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Anonymous"
               maxLength={MAX_NAME_LENGTH}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600
-                         focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+              className="w-full bg-surface border border-border rounded-2xl px-4 py-3.5 text-sm text-white placeholder-muted
+                         focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition"
             />
-            <span className="text-right text-xs text-zinc-600">
+            <span className="text-right text-xs text-muted">
               {displayName.length}/{MAX_NAME_LENGTH}
             </span>
           </div>
@@ -77,8 +85,8 @@ export default function Home() {
           <button
             onClick={handleCreate}
             disabled={loading}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed
-                       text-white font-semibold py-3 px-6 rounded-xl transition-colors duration-150 text-sm"
+            className="w-full bg-accent hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed
+                       text-white font-semibold py-3.5 px-6 rounded-2xl transition-all duration-150 text-sm"
           >
             {loading ? "Creating…" : "Create my link"}
           </button>
