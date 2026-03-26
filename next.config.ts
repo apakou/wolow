@@ -1,7 +1,32 @@
 import type { NextConfig } from "next";
 
+const securityHeaders = [
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  {
+    key: "Content-Security-Policy",
+    value: [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // required by Next.js
+      "style-src 'self' 'unsafe-inline'",                // required by Tailwind
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+      "img-src 'self' data:",
+      "font-src 'self'",
+      "frame-ancestors 'none'",
+    ].join("; "),
+  },
+];
+
 const nextConfig: NextConfig = {
-  /* config options here */
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: securityHeaders,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
