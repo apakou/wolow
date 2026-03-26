@@ -19,7 +19,7 @@ async function getRoom(slug: string) {
   return data ?? null;
 }
 
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(req: Request, { params }: Params) {
   const { slug } = await params;
   const room = await getRoom(slug);
 
@@ -27,12 +27,20 @@ export async function GET(_req: Request, { params }: Params) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
+  const url = new URL(req.url);
+  const conversationId = url.searchParams.get("conversation_id");
+
   const supabase = await createClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("messages")
     .select("id, content, is_owner, created_at")
-    .eq("room_id", room.id)
-    .order("created_at", { ascending: true });
+    .eq("room_id", room.id);
+
+  if (conversationId) {
+    query = query.eq("conversation_id", conversationId);
+  }
+
+  const { data, error } = await query.order("created_at", { ascending: true });
 
   if (error) {
     return NextResponse.json({ error: "Failed to fetch messages" }, { status: 500 });
@@ -91,10 +99,19 @@ export async function POST(req: Request, { params }: Params) {
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
   const is_owner = !!ownerToken && ownerToken === room.owner_token;
 
+  const conversationId =
+    typeof (body as Record<string, unknown>).conversation_id === "string"
+      ? ((body as Record<string, unknown>).conversation_id as string)
+      : null;
+
+  if (!conversationId) {
+    return NextResponse.json({ error: "conversation_id is required" }, { status: 422 });
+  }
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("messages")
-    .insert({ room_id: room.id, content, is_owner });
+    .insert({ room_id: room.id, content, is_owner, conversation_id: conversationId });
 
   if (error) {
     console.error("[messages] insert error:", error.message);

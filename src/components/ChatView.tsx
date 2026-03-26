@@ -28,6 +28,11 @@ type Props = {
   roomId: string;
   slug: string;
   displayName: string;
+  /** Optional conversation scope — when set, only messages for this thread are shown */
+  conversationId?: string;
+  /** True when the room owner is viewing (owner messages = right/blue).
+   *  False when an anonymous sender is viewing (sender messages = right/blue). */
+  isOwnerView?: boolean;
   /** Extra content rendered inside the header (e.g. share bar for owner) */
   header?: HeaderSlot;
   inputPlaceholder?: string;
@@ -70,13 +75,12 @@ function TimeLabel({ date }: { date: string }) {
 
 // ─── Bubble ──────────────────────────────────────────────────────────────────
 
-function Bubble({ message }: { message: Message }) {
-  const isOwner = message.is_owner;
+function Bubble({ message, isMine }: { message: Message; isMine: boolean }) {
   return (
-    <div className={`flex flex-col gap-0.5 ${isOwner ? "items-end" : "items-start"}`}>
+    <div className={`flex flex-col gap-0.5 ${isMine ? "items-end" : "items-start"}`}>
       <div
         className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words transition-opacity
-          ${isOwner ? "bg-indigo-600 text-white rounded-br-sm" : "bg-zinc-800 text-zinc-100 rounded-bl-sm"}
+          ${isMine ? "bg-indigo-600 text-white rounded-br-sm" : "bg-zinc-800 text-zinc-100 rounded-bl-sm"}
           ${message.pending ? "opacity-50" : "opacity-100"}
           ${message.failed ? "bg-red-900/60 text-red-300" : ""}
         `}
@@ -97,6 +101,8 @@ export default function ChatView({
   roomId,
   slug,
   displayName,
+  conversationId,
+  isOwnerView = false,
   header,
   inputPlaceholder,
 }: Props) {
@@ -128,27 +134,31 @@ export default function ChatView({
 
   // ── Fetch existing messages ────────────────────────────────────────────────
   useEffect(() => {
-    fetch(`/api/rooms/${slug}/messages`)
+    const qs = conversationId ? `?conversation_id=${conversationId}` : "";
+    fetch(`/api/rooms/${slug}/messages${qs}`)
       .then((r) => r.json())
       .then((data: Message[]) => {
         setMessages(data);
         setLoaded(true);
       })
       .catch(() => setLoaded(true));
-  }, [slug]);
+  }, [slug, conversationId]);
 
   // ── Realtime subscription ─────────────────────────────────────────────────
   useEffect(() => {
     const supabase = createClient();
+    const filter = conversationId
+      ? `conversation_id=eq.${conversationId}`
+      : `room_id=eq.${roomId}`;
     const channel = supabase
-      .channel(`chat:${roomId}`)
+      .channel(`chat:${conversationId ?? roomId}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "messages",
-          filter: `room_id=eq.${roomId}`,
+          filter,
         },
         (payload) => {
           const incoming = payload.new as Message;
@@ -172,7 +182,7 @@ export default function ChatView({
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [roomId]);
+  }, [roomId, conversationId]);
 
   // ── Auto-scroll when at bottom ────────────────────────────────────────────
   useEffect(() => {
@@ -203,7 +213,7 @@ export default function ChatView({
     const optimistic: Message = {
       id: optimisticId,
       content,
-      is_owner: false, // will be corrected by DB; owner flag comes from cookie
+      is_owner: isOwnerView,
       created_at: new Date().toISOString(),
       pending: true,
     };
@@ -218,7 +228,7 @@ export default function ChatView({
       const res = await fetch(`/api/rooms/${slug}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, conversation_id: conversationId }),
       });
 
       if (!res.ok) {
@@ -280,7 +290,11 @@ export default function ChatView({
         ) : (
           <div className="px-4 py-4 flex flex-col gap-3">
             {messages.map((msg) => (
-              <Bubble key={msg.id} message={msg} />
+              <Bubble
+                key={msg.id}
+                message={msg}
+                isMine={isOwnerView ? msg.is_owner : !msg.is_owner}
+              />
             ))}
           </div>
         )}
