@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getFunAnonymousEmoji } from "@/lib/fun-anonymous-name";
 import { relativeTime } from "@/lib/relative-time";
 
 type Props = {
@@ -23,16 +24,6 @@ type Conversation = {
 };
 
 type Filter = "all" | "unread";
-
-// Deterministic avatar colors from conversation index
-const AVATAR_COLORS = [
-  "bg-blue-500",
-  "bg-violet-500",
-  "bg-emerald-500",
-  "bg-orange-500",
-  "bg-rose-500",
-  "bg-sky-500",
-];
 
 export default function OwnerInbox({ roomId, slug, displayName }: Props) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -147,7 +138,7 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
 
   return (
     <div className="flex flex-col h-dvh bg-app-gradient">
-      {/* Header with gradient */}
+      {/* Header */}
       <header className="shrink-0 bg-header-gradient px-4 pt-5 pb-4 flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-bold text-white">Messages</h1>
@@ -187,7 +178,7 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
             onClick={() => setFilter("all")}
             className={`text-xs font-medium px-4 py-1.5 rounded-full transition-all ${
               filter === "all"
-                ? "bg-accent text-white shadow-lg shadow-accent-glow"
+                ? "bg-accent text-white"
                 : "bg-surface-light/50 text-slate-400 hover:text-slate-200"
             }`}
           >
@@ -197,7 +188,7 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
             onClick={() => setFilter("unread")}
             className={`text-xs font-medium px-4 py-1.5 rounded-full transition-all ${
               filter === "unread"
-                ? "bg-accent text-white shadow-lg shadow-accent-glow"
+                ? "bg-accent text-white"
                 : "bg-surface-light/50 text-slate-400 hover:text-slate-200"
             }`}
           >
@@ -230,7 +221,7 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
           </div>
         ) : (
           <div className="flex flex-col px-3 py-3 gap-1.5">
-            {filtered.map((conv, i) => (
+            {filtered.map((conv) => (
               <a
                 key={conv.id}
                 href={`/${slug}/inbox/${conv.id}`}
@@ -239,9 +230,9 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
               >
                 {/* Avatar */}
                 <div className="relative shrink-0">
-                  <div className={`w-11 h-11 rounded-full ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center`}>
-                    <span className="text-white text-sm font-bold">
-                      {conv.label.replace("Anonymous #", "#")}
+                  <div className="w-11 h-11 rounded-full bg-gradient-to-br from-white/20 to-white/5 backdrop-blur-md border border-white/30 flex items-center justify-center shadow-lg">
+                    <span className="text-white text-xl leading-none" role="img" aria-label={conv.label}>
+                      {getFunAnonymousEmoji(conv.id)}
                     </span>
                   </div>
                   {conv.unread_count > 0 && (
@@ -255,7 +246,7 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
                       {conv.label}
                     </p>
                     {conv.last_message && (
-                      <span className={`text-[11px] shrink-0 ml-2 ${conv.unread_count > 0 ? "text-accent-light font-medium" : "text-muted"}`}>
+                      <span className={`text-[11px] shrink-0 ml-2 ${conv.unread_count > 0 ? "text-accent font-medium" : "text-muted"}`}>
                         {relativeTime(conv.last_message.created_at)}
                       </span>
                     )}

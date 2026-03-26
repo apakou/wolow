@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { logSecurityEvent } from "@/lib/security-logger";
 
 type Params = { params: Promise<{ slug: string }> };
 
@@ -21,7 +22,10 @@ function parseBodyValue(body: unknown, key: string): string {
 
 function validateEmoji(raw: string): string | null {
   if (!raw) return null;
+  // Cap at 16 bytes — covers ZWJ sequences, flag emojis, keycap sequences etc.
   if (raw.length > 16) return null;
+  // A03: Reject strings that contain no actual emoji character (prevents arbitrary text/scripts)
+  if (!/\p{Emoji}/u.test(raw)) return null;
   return raw;
 }
 
@@ -73,6 +77,7 @@ export async function POST(req: Request, { params }: Params) {
 
   const actor = await resolveActor(slug, room.owner_token);
   if (!actor.ok) {
+    logSecurityEvent("unauthorized_access", { endpoint: "POST /reactions", slug });
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
@@ -82,20 +87,34 @@ export async function POST(req: Request, { params }: Params) {
   }
 
   const supabase = await createClient();
-  const { error: clearError } = await supabase
-    .from("reactions")
-    .delete()
-    .eq("message_id", messageId)
-    .eq("is_owner", actor.isOwner)
-    .neq("emoji", emoji);
-
-  if (clearError) {
-    return NextResponse.json({ error: "Failed to add reaction" }, { status: 500 });
-  }
-
   const { error } = await supabase
     .from("reactions")
-    .insert({ message_id: messageId, emoji, is_owner: actor.isOwner });
+    .upsert(
+      { message_id: messageId, emoji, is_owner: actor.isOwner },
+      { onConflict: "message_id,is_owner" }
+    );
+
+  if (error?.message?.includes("message_id,is_owner")) {
+    const { error: clearError } = await supabase
+      .from("reactions")
+      .delete()
+      .eq("message_id", messageId)
+      .eq("is_owner", actor.isOwner);
+
+    if (clearError) {
+      return NextResponse.json({ error: "Failed to add reaction" }, { status: 500 });
+    }
+
+    const { error: insertError } = await supabase
+      .from("reactions")
+      .insert({ message_id: messageId, emoji, is_owner: actor.isOwner });
+
+    if (insertError && insertError.code !== "23505") {
+      return NextResponse.json({ error: "Failed to add reaction" }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true }, { status: 201 });
+  }
 
   // Duplicate insert is fine for idempotency.
   if (error && error.code !== "23505") {
@@ -128,6 +147,7 @@ export async function DELETE(req: Request, { params }: Params) {
 
   const actor = await resolveActor(slug, room.owner_token);
   if (!actor.ok) {
+    logSecurityEvent("unauthorized_access", { endpoint: "DELETE /reactions", slug });
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 

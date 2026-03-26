@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { checkRateLimit, getClientIp, LIMITS } from "@/lib/rate-limit";
+import { getClientIp, LIMITS } from "@/lib/rate-limit";
+import { checkRateLimitDb } from "@/lib/rate-limit-db";
+import { logSecurityEvent } from "@/lib/security-logger";
 
 type Params = { params: Promise<{ slug: string }> };
 
@@ -117,10 +119,11 @@ export async function GET(req: Request, { params }: Params) {
 export async function POST(req: Request, { params }: Params) {
   const { slug } = await params;
 
-  // Rate limit: 10 messages per IP per minute
+  // Rate limit: 10 messages per IP per minute (DB-backed, cross-instance)
   const ip = getClientIp(req);
-  const rl = checkRateLimit(`send-message:${ip}`, LIMITS.sendMessage.limit, LIMITS.sendMessage.windowMs);
+  const rl = await checkRateLimitDb(`send-message:${ip}`, LIMITS.sendMessage.limit, LIMITS.sendMessage.windowMs);
   if (!rl.ok) {
+    logSecurityEvent("rate_limit_hit", { endpoint: "send-message", ip, retryAfter: rl.retryAfter });
     return NextResponse.json(
       { error: "Too many messages. Please slow down." },
       {
@@ -180,6 +183,19 @@ export async function POST(req: Request, { params }: Params) {
 
   const supabase = await createClient();
 
+  // A01: Verify the conversation belongs to this room (prevents cross-room message injection)
+  const { data: conversation, error: convErr } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("id", conversationId)
+    .eq("room_id", room.id)
+    .single();
+
+  if (convErr || !conversation) {
+    logSecurityEvent("cross_resource_access", { endpoint: "send-message", slug, ip });
+    return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+  }
+
   if (replyToMessageId) {
     const { data: targetMessage, error: targetError } = await supabase
       .from("messages")
@@ -208,7 +224,6 @@ export async function POST(req: Request, { params }: Params) {
     });
 
   if (error) {
-    console.error("[messages] insert error:", error.message);
     return NextResponse.json({ error: "Failed to send message" }, { status: 500 });
   }
 

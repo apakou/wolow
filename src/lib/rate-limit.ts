@@ -1,5 +1,10 @@
 type Window = { count: number; resetAt: number };
 
+// A04 — Design limitation: This in-memory store is per-process.
+// On Vercel (serverless) each cold-start gets a fresh Map, and concurrent
+// function instances don't share state, so limits can be circumvented by
+// hitting different instances. For production-grade limiting replace this
+// with a shared atomic store (e.g. Upstash Redis + @upstash/ratelimit).
 const store = new Map<string, Window>();
 
 // Prune expired entries to prevent unbounded memory growth.

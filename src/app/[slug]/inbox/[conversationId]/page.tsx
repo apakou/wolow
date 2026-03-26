@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
+import { getFunAnonymousName } from "@/lib/fun-anonymous-name";
 import OwnerThread from "./components/OwnerThread";
 
 type Props = { params: Promise<{ slug: string; conversationId: string }> };
@@ -43,15 +44,7 @@ export default async function ConversationPage({ params }: Props) {
     notFound();
   }
 
-  // Determine label (position among all conversations for this room)
-  const { data: allConversations } = await supabase
-    .from("conversations")
-    .select("id")
-    .eq("room_id", room.id)
-    .order("created_at", { ascending: true });
-
-  const index = (allConversations ?? []).findIndex((c) => c.id === conversationId);
-  const label = `Anonymous #${index + 1}`;
+  const label = getFunAnonymousName(conversationId);
 
   return (
     <OwnerThread

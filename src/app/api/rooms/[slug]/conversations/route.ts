@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getFunAnonymousName } from "@/lib/fun-anonymous-name";
+import { logSecurityEvent } from "@/lib/security-logger";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type Params = { params: Promise<{ slug: string }> };
@@ -57,11 +59,11 @@ async function buildConversationResponse(
   }
 
   const result = conversations
-    .map((conv, index) => {
+    .map((conv) => {
       const latest = latestMap.get(conv.id);
       return {
         id: conv.id,
-        label: `Anonymous #${index + 1}`,
+        label: getFunAnonymousName(conv.id),
         created_at: conv.created_at,
         message_count: countMap.get(conv.id) ?? 0,
         unread_count: unreadMap.get(conv.id) ?? 0,
@@ -117,7 +119,6 @@ export async function POST(_req: Request, { params }: Params) {
     .single();
 
   if (error || !data) {
-    console.error("[conversations] upsert error:", error?.message);
     return NextResponse.json({ error: "Failed to create conversation" }, { status: 500 });
   }
 
@@ -152,6 +153,7 @@ export async function GET(_req: Request, { params }: Params) {
   const cookieStore = await cookies();
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
   if (!ownerToken || ownerToken !== room.owner_token) {
+    logSecurityEvent("auth_failure", { endpoint: "GET /conversations", slug });
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
@@ -204,6 +206,7 @@ export async function PATCH(req: Request, { params }: Params) {
   const cookieStore = await cookies();
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
   if (!ownerToken || ownerToken !== room.owner_token) {
+    logSecurityEvent("auth_failure", { endpoint: "PATCH /conversations", slug });
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 

@@ -8,7 +8,6 @@
   --color-border: #1E293B;
   --color-muted: #64748B;
   --color-accent: #3B82F6;
-  --color-accent-light: #60A5FA;
   --color-accent-glow: #3B82F640;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -35,10 +34,6 @@ body {
 
 .bg-card {
   background: #111827;
-}
-
-.glow-accent {
-  box-shadow: none;
 }
 
 /* Scrollbar styling */

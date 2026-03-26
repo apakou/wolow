@@ -2,13 +2,16 @@ import { nanoid } from "nanoid";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { checkRateLimit, getClientIp, LIMITS } from "@/lib/rate-limit";
+import { getClientIp, LIMITS } from "@/lib/rate-limit";
+import { checkRateLimitDb } from "@/lib/rate-limit-db";
+import { logSecurityEvent } from "@/lib/security-logger";
 
 export async function POST(request: Request) {
-  // Rate limit: 5 room creations per IP per hour
+  // Rate limit: 5 room creations per IP per hour (DB-backed, cross-instance)
   const ip = getClientIp(request);
-  const rl = checkRateLimit(`create-room:${ip}`, LIMITS.createRoom.limit, LIMITS.createRoom.windowMs);
+  const rl = await checkRateLimitDb(`create-room:${ip}`, LIMITS.createRoom.limit, LIMITS.createRoom.windowMs);
   if (!rl.ok) {
+    logSecurityEvent("rate_limit_hit", { endpoint: "create-room", ip, retryAfter: rl.retryAfter });
     return NextResponse.json(
       { error: "Too many requests. Please try again later." },
       {
@@ -47,7 +50,6 @@ export async function POST(request: Request) {
     .insert({ slug, owner_token, display_name });
 
   if (error) {
-    console.error("[rooms] insert error:", error.message);
     return NextResponse.json({ error: "Failed to create room" }, { status: 500 });
   }
 
