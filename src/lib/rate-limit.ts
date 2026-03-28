@@ -28,6 +28,21 @@ export function checkRateLimit(
   limit: number,
   windowMs: number
 ): { ok: true } | { ok: false; retryAfter: number } {
+  const detailed = checkRateLimitDetailed(key, limit, windowMs);
+  if (!detailed.ok) return { ok: false, retryAfter: detailed.retryAfter };
+  return { ok: true };
+}
+
+/**
+ * Same limiter as checkRateLimit, but returns count/remaining for hybrid strategies.
+ */
+export function checkRateLimitDetailed(
+  key: string,
+  limit: number,
+  windowMs: number
+):
+  | { ok: true; count: number; remaining: number }
+  | { ok: false; retryAfter: number; count: number; remaining: 0 } {
   const now = Date.now();
   prune(now);
 
@@ -36,16 +51,16 @@ export function checkRateLimit(
   if (!win || now >= win.resetAt) {
     win = { count: 1, resetAt: now + windowMs };
     store.set(key, win);
-    return { ok: true };
+    return { ok: true, count: 1, remaining: Math.max(0, limit - 1) };
   }
 
   if (win.count >= limit) {
     const retryAfter = Math.ceil((win.resetAt - now) / 1000);
-    return { ok: false, retryAfter };
+    return { ok: false, retryAfter, count: win.count, remaining: 0 };
   }
 
   win.count += 1;
-  return { ok: true };
+  return { ok: true, count: win.count, remaining: Math.max(0, limit - win.count) };
 }
 
 /**

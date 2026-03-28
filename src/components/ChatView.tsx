@@ -25,6 +25,12 @@ export type Message = {
   failed?: boolean;
 };
 
+type SendMessageResponse = {
+  ok?: boolean;
+  message?: Message;
+  error?: string;
+};
+
 export type Reaction = {
   emoji: string;
   count: number;
@@ -57,6 +63,19 @@ type ReplyTarget = {
   content: string;
   is_owner: boolean;
 };
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
+function isStandaloneDisplayMode(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (window.navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
 
 function sortReactions(reactions: Reaction[]): Reaction[] {
   return [...reactions].sort((a, b) => b.count - a.count || a.emoji.localeCompare(b.emoji));
@@ -378,12 +397,14 @@ export default function ChatView({
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [newMessageToast, setNewMessageToast] = useState(false);
   const [reactionBusy, setReactionBusy] = useState<Record<string, boolean>>({});
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
+  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [installing, setInstalling] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -406,10 +427,61 @@ export default function ChatView({
     return map;
   }, [messages]);
 
+  const hasPendingMessages = useMemo(
+    () => messages.some((message) => message.pending),
+    [messages]
+  );
+
   const handleSwipeReply = useCallback((message: ReplyTarget) => {
     if (message.content.trim().length === 0) return;
     setReplyTo(message);
   }, []);
+
+  useEffect(() => {
+    if (isOwnerView) return;
+    if (isStandaloneDisplayMode()) return;
+
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPromptEvent(event as BeforeInstallPromptEvent);
+      setShowInstallPrompt(true);
+    };
+
+    const onAppInstalled = () => {
+      setInstallPromptEvent(null);
+      setShowInstallPrompt(false);
+    };
+
+    const hintTimer = window.setTimeout(() => {
+      if (!isStandaloneDisplayMode()) {
+        setShowInstallPrompt(true);
+      }
+    }, 1200);
+
+    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt as EventListener);
+    window.addEventListener("appinstalled", onAppInstalled);
+
+    return () => {
+      window.clearTimeout(hintTimer);
+      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt as EventListener);
+      window.removeEventListener("appinstalled", onAppInstalled);
+    };
+  }, [isOwnerView]);
+
+  const handleInstallClick = useCallback(async () => {
+    if (!installPromptEvent) return;
+    try {
+      setInstalling(true);
+      await installPromptEvent.prompt();
+      const choice = await installPromptEvent.userChoice;
+      if (choice.outcome === "accepted") {
+        setShowInstallPrompt(false);
+      }
+      setInstallPromptEvent(null);
+    } finally {
+      setInstalling(false);
+    }
+  }, [installPromptEvent]);
 
   // ── Detect whether user is scrolled to the bottom ─────────────────────────
   useEffect(() => {
@@ -615,22 +687,23 @@ export default function ChatView({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const content = input.trim();
-    if (!content || sending) return;
+    if (!content) return;
+
+    const replyTargetId = replyTo?.id ?? null;
 
     // Optimistic insert
-    const optimisticId = `optimistic-${Date.now()}`;
+    const optimisticId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const optimistic: Message = {
       id: optimisticId,
       content,
       is_owner: isOwnerView,
       created_at: new Date().toISOString(),
-      reply_to_message_id: replyTo?.id ?? null,
+      reply_to_message_id: replyTargetId,
       pending: true,
     };
     setMessages((prev) => [...prev, optimistic]);
     setInput("");
     setReplyTo(null);
-    setSending(true);
     setError(null);
     // Scroll to show the optimistic bubble
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
@@ -642,12 +715,13 @@ export default function ChatView({
         body: JSON.stringify({
           content,
           conversation_id: conversationId,
-          reply_to_message_id: replyTo?.id ?? null,
+          reply_to_message_id: replyTargetId,
         }),
       });
 
+      const data = (await res.json()) as SendMessageResponse;
+
       if (!res.ok) {
-        const data = await res.json();
         // Mark optimistic message as failed
         setMessages((prev) =>
           prev.map((m) => (m.id === optimisticId ? { ...m, pending: false, failed: true } : m))
@@ -655,18 +729,26 @@ export default function ChatView({
         setError(data.error ?? "Failed to send");
         return;
       }
-      // Realtime will replace the optimistic message; if it doesn't arrive
-      // within ~3 s (e.g. realtime not enabled), remove the pending bubble.
-      setTimeout(() => {
-        setMessages((prev) => prev.filter((m) => m.id !== optimisticId || !m.pending));
-      }, 3000);
+
+      // Replace optimistic message immediately with authoritative server row.
+      if (data.message?.id) {
+        setMessages((prev) => {
+          const withoutOptimistic = prev.filter((m) => m.id !== optimisticId);
+          if (withoutOptimistic.some((m) => m.id === data.message!.id)) {
+            return withoutOptimistic;
+          }
+          return [...withoutOptimistic, data.message!];
+        });
+      } else {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === optimisticId ? { ...m, pending: false } : m))
+        );
+      }
     } catch {
       setMessages((prev) =>
         prev.map((m) => (m.id === optimisticId ? { ...m, pending: false, failed: true } : m))
       );
       setError("Network error — please try again");
-    } finally {
-      setSending(false);
     }
   }
 
@@ -719,7 +801,39 @@ export default function ChatView({
               {displayName}
             </h1>
             {!isOwnerView && (
-              <div className="mt-3 flex justify-center">
+              <div className="mt-3 flex flex-col items-center gap-2">
+                {showInstallPrompt && (
+                  <div className="w-full max-w-sm rounded-2xl border border-white/20 bg-surface-light/70 backdrop-blur-md px-3 py-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[11px] text-slate-200 leading-snug">
+                        Install Wolow for faster access and instant notifications.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowInstallPrompt(false)}
+                        className="text-muted hover:text-white transition"
+                        aria-label="Dismiss install prompt"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {installPromptEvent ? (
+                      <button
+                        type="button"
+                        onClick={handleInstallClick}
+                        disabled={installing}
+                        className="mt-2 w-full rounded-xl bg-accent px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                      >
+                        {installing ? "Opening installer..." : "Install app"}
+                      </button>
+                    ) : (
+                      <p className="mt-2 text-[11px] text-muted">
+                        Open your browser menu and tap "Add to Home Screen".
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <a
                   href="/"
                   target="_blank"
@@ -835,12 +949,12 @@ export default function ChatView({
           />
           <button
             type="submit"
-            disabled={sending || input.trim().length === 0}
+            disabled={input.trim().length === 0}
             className="shrink-0 bg-accent hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed
                        text-white p-3 rounded-2xl transition-all shadow-lg"
             aria-label="Send message"
           >
-            {sending ? (
+            {hasPendingMessages ? (
               <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
             ) : (
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">

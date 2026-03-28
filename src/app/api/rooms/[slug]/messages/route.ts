@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getClientIp, LIMITS } from "@/lib/rate-limit";
+import { checkRateLimitDetailed, getClientIp, LIMITS } from "@/lib/rate-limit";
 import { checkRateLimitDb } from "@/lib/rate-limit-db";
 import { logSecurityEvent } from "@/lib/security-logger";
 
@@ -119,18 +119,25 @@ export async function GET(req: Request, { params }: Params) {
 export async function POST(req: Request, { params }: Params) {
   const { slug } = await params;
 
-  // Rate limit: 10 messages per IP per minute (DB-backed, cross-instance)
+  // Hybrid rate limiting:
+  // 1) fast in-memory check on every request (low latency)
+  // 2) shared DB enforcement when close to limit or over local limit
   const ip = getClientIp(req);
-  const rl = await checkRateLimitDb(`send-message:${ip}`, LIMITS.sendMessage.limit, LIMITS.sendMessage.windowMs);
-  if (!rl.ok) {
-    logSecurityEvent("rate_limit_hit", { endpoint: "send-message", ip, retryAfter: rl.retryAfter });
-    return NextResponse.json(
-      { error: "Too many messages. Please slow down." },
-      {
-        status: 429,
-        headers: { "Retry-After": String(rl.retryAfter) },
-      }
-    );
+  const key = `send-message:${ip}`;
+  const local = checkRateLimitDetailed(key, LIMITS.sendMessage.limit, LIMITS.sendMessage.windowMs);
+  const nearLimit = local.ok && local.remaining <= 2;
+  if (!local.ok || nearLimit) {
+    const db = await checkRateLimitDb(key, LIMITS.sendMessage.limit, LIMITS.sendMessage.windowMs);
+    if (!db.ok) {
+      logSecurityEvent("rate_limit_hit", { endpoint: "send-message", ip, retryAfter: db.retryAfter });
+      return NextResponse.json(
+        { error: "Too many messages. Please slow down." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(db.retryAfter) },
+        }
+      );
+    }
   }
 
   let body: unknown;
@@ -157,15 +164,9 @@ export async function POST(req: Request, { params }: Params) {
     );
   }
 
-  const room = await getRoom(slug);
-  if (!room) {
-    return NextResponse.json({ error: "Room not found" }, { status: 404 });
-  }
-
   // Determine if the sender is the room owner via httpOnly cookie
   const cookieStore = await cookies();
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-  const is_owner = !!ownerToken && ownerToken === room.owner_token;
 
   const conversationId =
     typeof (body as Record<string, unknown>).conversation_id === "string"
@@ -183,49 +184,36 @@ export async function POST(req: Request, { params }: Params) {
 
   const supabase = await createClient();
 
-  // A01: Verify the conversation belongs to this room (prevents cross-room message injection)
-  const { data: conversation, error: convErr } = await supabase
-    .from("conversations")
-    .select("id")
-    .eq("id", conversationId)
-    .eq("room_id", room.id)
-    .single();
-
-  if (convErr || !conversation) {
-    logSecurityEvent("cross_resource_access", { endpoint: "send-message", slug, ip });
-    return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
-  }
-
-  if (replyToMessageId) {
-    const { data: targetMessage, error: targetError } = await supabase
-      .from("messages")
-      .select("id, conversation_id")
-      .eq("id", replyToMessageId)
-      .eq("room_id", room.id)
-      .single();
-
-    if (targetError || !targetMessage) {
-      return NextResponse.json({ error: "Reply target not found" }, { status: 422 });
-    }
-
-    if (targetMessage.conversation_id !== conversationId) {
-      return NextResponse.json({ error: "Reply target must be in the same conversation" }, { status: 422 });
-    }
-  }
-
-  const { error } = await supabase
-    .from("messages")
-    .insert({
-      room_id: room.id,
-      content,
-      is_owner,
-      conversation_id: conversationId,
-      reply_to_message_id: replyToMessageId,
-    });
+  const { data, error } = await supabase.rpc("send_message_secure", {
+    p_slug: slug,
+    p_conversation_id: conversationId,
+    p_content: content,
+    p_reply_to_message_id: replyToMessageId,
+    p_owner_token: ownerToken ?? null,
+  });
 
   if (error) {
+    const msg = error.message ?? "";
+    if (msg.includes("ROOM_NOT_FOUND")) {
+      return NextResponse.json({ error: "Room not found" }, { status: 404 });
+    }
+    if (msg.includes("CONVERSATION_NOT_FOUND") || msg.includes("CONVERSATION_REQUIRED")) {
+      logSecurityEvent("cross_resource_access", { endpoint: "send-message", slug, ip });
+      return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+    }
+    if (msg.includes("REPLY_TARGET_NOT_FOUND")) {
+      return NextResponse.json({ error: "Reply target not found" }, { status: 422 });
+    }
+    if (msg.includes("REPLY_TARGET_WRONG_CONVERSATION")) {
+      return NextResponse.json({ error: "Reply target must be in the same conversation" }, { status: 422 });
+    }
     return NextResponse.json({ error: "Failed to send message" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true }, { status: 201 });
+  const inserted = Array.isArray(data) ? data[0] : null;
+  if (!inserted) {
+    return NextResponse.json({ error: "Failed to send message" }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true, message: inserted }, { status: 201 });
 }
