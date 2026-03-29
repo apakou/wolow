@@ -459,12 +459,28 @@ export default function ChatView({
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const [showPushPopup, setShowPushPopup] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true); // track without re-render
 
+  const push = usePushNotifications(slug, isOwnerView ? "owner" : "visitor", conversationId);
   const e2ee = useE2EE({ slug, conversationId, isOwnerView });
+
+  // Show push popup once messages load, if not yet subscribed and not previously dismissed
+  useEffect(() => {
+    if (
+      loaded &&
+      push.supported &&
+      !push.isSubscribed &&
+      push.permission !== "denied" &&
+      !localStorage.getItem(`push_popup_dismissed_${slug}`)
+    ) {
+      const timer = setTimeout(() => setShowPushPopup(true), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [loaded, push.supported, push.isSubscribed, push.permission, slug]);
 
   // Clear any "encryption not ready" error once E2EE becomes ready
   useEffect(() => {
@@ -1096,6 +1112,49 @@ export default function ChatView({
           </p>
         </div>
       </form>
+
+      {/* Push notification popup */}
+      {showPushPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
+          <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-[#1a1a2e] shadow-2xl p-6 flex flex-col items-center gap-4 animate-in fade-in zoom-in-95 duration-200">
+            {/* Bell icon */}
+            <div className="w-14 h-14 rounded-full bg-accent/15 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 text-accent">
+                <path fillRule="evenodd" d="M5.25 9a6.75 6.75 0 0 1 13.5 0v.75c0 2.123.8 4.057 2.118 5.52a.75.75 0 0 1-.573 1.23H3.705a.75.75 0 0 1-.573-1.23A8.973 8.973 0 0 0 5.25 9.75V9ZM8.159 18.846c.069.216.16.424.271.62a3.598 3.598 0 0 0 7.14 0 3.18 3.18 0 0 0 .27-.62H8.16Z" clipRule="evenodd" />
+              </svg>
+            </div>
+
+            <h2 className="text-base font-bold text-white text-center">Stay in the loop</h2>
+            <p className="text-sm text-slate-300 text-center leading-relaxed">
+              Turn on notifications so you never miss an anonymous message.
+            </p>
+
+            <button
+              type="button"
+              onClick={async () => {
+                await push.subscribe();
+                setShowPushPopup(false);
+                localStorage.setItem(`push_popup_dismissed_${slug}`, "1");
+              }}
+              disabled={push.loading}
+              className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              {push.loading ? "Enabling..." : "Enable notifications"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowPushPopup(false);
+                localStorage.setItem(`push_popup_dismissed_${slug}`, "1");
+              }}
+              className="text-xs text-muted hover:text-slate-300 transition"
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

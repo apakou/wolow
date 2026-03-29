@@ -37,10 +37,7 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
   const [copied, setCopied] = useState(false);
   const [canShare, setCanShare] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
-  const [pushBannerDismissed, setPushBannerDismissed] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return !!localStorage.getItem(`push_banner_dismissed_${slug}`);
-  });
+  const [showPushPopup, setShowPushPopup] = useState(false);
 
   const push = usePushNotifications(slug, "owner");
 
@@ -51,6 +48,19 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
     setShareableLink(`${window.location.origin}/${slug}`);
     setCanShare(!!navigator.share);
   }, [slug]);
+
+  // Show push popup if not already subscribed/dismissed
+  useEffect(() => {
+    if (
+      push.supported &&
+      !push.isSubscribed &&
+      push.permission !== "denied" &&
+      !localStorage.getItem(`push_popup_dismissed_${slug}`)
+    ) {
+      const timer = setTimeout(() => setShowPushPopup(true), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [push.supported, push.isSubscribed, push.permission, slug]);
 
   // Pre-generate and upload the owner's public key as soon as they open the inbox.
   // This ensures visiting visitors can always find the owner's key and encrypt immediately.
@@ -219,40 +229,6 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
           )}
         </div>
 
-        {/* Push notification prompt */}
-        {push.supported && !push.isSubscribed && !pushBannerDismissed && push.permission !== "denied" && (
-          <div className="rounded-2xl border border-white/20 bg-surface-light/70 backdrop-blur-md px-3 py-2">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[11px] text-slate-200 leading-snug">
-                Enable notifications to get alerted about new messages.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setPushBannerDismissed(true);
-                  localStorage.setItem(`push_banner_dismissed_${slug}`, "1");
-                }}
-                className="text-muted hover:text-white transition text-sm"
-                aria-label="Dismiss notification prompt"
-              >
-                ✕
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={async () => {
-                await push.subscribe();
-                setPushBannerDismissed(true);
-                localStorage.setItem(`push_banner_dismissed_${slug}`, "1");
-              }}
-              disabled={push.loading}
-              className="mt-2 w-full rounded-xl bg-accent px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-            >
-              {push.loading ? "Enabling..." : "Enable notifications"}
-            </button>
-          </div>
-        )}
-
         {/* Filter pills */}
         <div className="flex gap-2 mt-1">
           <button
@@ -355,6 +331,44 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
           </div>
         )}
       </div>
+      {/* Push notification popup */}
+      {showPushPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
+          <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-[#1a1a2e] shadow-2xl p-6 flex flex-col items-center gap-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-14 h-14 rounded-full bg-accent/15 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 text-accent">
+                <path fillRule="evenodd" d="M5.25 9a6.75 6.75 0 0 1 13.5 0v.75c0 2.123.8 4.057 2.118 5.52a.75.75 0 0 1-.573 1.23H3.705a.75.75 0 0 1-.573-1.23A8.973 8.973 0 0 0 5.25 9.75V9ZM8.159 18.846c.069.216.16.424.271.62a3.598 3.598 0 0 0 7.14 0 3.18 3.18 0 0 0 .27-.62H8.16Z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <h2 className="text-base font-bold text-white text-center">Stay in the loop</h2>
+            <p className="text-sm text-slate-300 text-center leading-relaxed">
+              Turn on notifications so you never miss an anonymous message.
+            </p>
+            <button
+              type="button"
+              onClick={async () => {
+                await push.subscribe();
+                setShowPushPopup(false);
+                localStorage.setItem(`push_popup_dismissed_${slug}`, "1");
+              }}
+              disabled={push.loading}
+              className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              {push.loading ? "Enabling..." : "Enable notifications"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowPushPopup(false);
+                localStorage.setItem(`push_popup_dismissed_${slug}`, "1");
+              }}
+              className="text-xs text-muted hover:text-slate-300 transition"
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
