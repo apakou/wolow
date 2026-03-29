@@ -39,7 +39,7 @@ export async function GET(req: Request, { params }: Params) {
   const supabase = await createClient();
   let query = supabase
     .from("messages")
-    .select("id, content, is_owner, created_at, reply_to_message_id")
+    .select("id, content, is_owner, created_at, reply_to_message_id, encrypted_content")
     .eq("room_id", room.id);
 
   if (conversationId) {
@@ -51,7 +51,7 @@ export async function GET(req: Request, { params }: Params) {
   if (error?.message?.includes("reply_to_message_id")) {
     let fallbackQuery = supabase
       .from("messages")
-      .select("id, content, is_owner, created_at")
+      .select("id, content, is_owner, created_at, encrypted_content")
       .eq("room_id", room.id);
 
     if (conversationId) {
@@ -154,15 +154,24 @@ export async function POST(req: Request, { params }: Params) {
 
   const content = stripHtml(raw).trim();
 
-  if (content.length < 1) {
+  // When encrypted_content is provided, the plaintext `content` is a fallback placeholder.
+  // Validate the plaintext only when NOT end-to-end encrypted.
+  const hasEncrypted =
+    typeof (body as Record<string, unknown>).encrypted_content === "string" &&
+    ((body as Record<string, unknown>).encrypted_content as string).length > 0;
+
+  if (!hasEncrypted && content.length < 1) {
     return NextResponse.json({ error: "Message cannot be empty" }, { status: 422 });
   }
-  if (content.length > 1000) {
+  if (!hasEncrypted && content.length > 1000) {
     return NextResponse.json(
       { error: "Message must be 1000 characters or fewer" },
       { status: 422 }
     );
   }
+
+  // For E2EE messages, store a placeholder so the DB content column is never null.
+  const storedContent = hasEncrypted ? "\u{1F512}" : content;
 
   // Determine if the sender is the room owner via httpOnly cookie
   const cookieStore = await cookies();
@@ -178,6 +187,16 @@ export async function POST(req: Request, { params }: Params) {
       ? ((body as Record<string, unknown>).reply_to_message_id as string)
       : null;
 
+  const encryptedContent =
+    typeof (body as Record<string, unknown>).encrypted_content === "string"
+      ? ((body as Record<string, unknown>).encrypted_content as string)
+      : null;
+
+  const senderPublicKeyId =
+    typeof (body as Record<string, unknown>).sender_public_key_id === "string"
+      ? ((body as Record<string, unknown>).sender_public_key_id as string)
+      : null;
+
   if (!conversationId) {
     return NextResponse.json({ error: "conversation_id is required" }, { status: 422 });
   }
@@ -187,9 +206,11 @@ export async function POST(req: Request, { params }: Params) {
   const { data, error } = await supabase.rpc("send_message_secure", {
     p_slug: slug,
     p_conversation_id: conversationId,
-    p_content: content,
+    p_content: storedContent,
     p_reply_to_message_id: replyToMessageId,
     p_owner_token: ownerToken ?? null,
+    p_encrypted_content: encryptedContent,
+    p_sender_public_key_id: senderPublicKeyId,
   });
 
   if (error) {

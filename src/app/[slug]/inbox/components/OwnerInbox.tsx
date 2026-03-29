@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getFunAnonymousEmoji } from "@/lib/fun-anonymous-name";
 import { relativeTime } from "@/lib/relative-time";
+import { generateKeyPair } from "@/lib/crypto/generate-key-pair";
+import { getPrivateKey, storePrivateKey } from "@/lib/crypto/key-storage";
+import { uploadOwnerPublicKey } from "@/lib/crypto/upload-public-key";
 
 type Props = {
   roomId: string;
@@ -39,6 +42,43 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
   useEffect(() => {
     setShareableLink(`${window.location.origin}/${slug}`);
     setCanShare(!!navigator.share);
+  }, [slug]);
+
+  // Pre-generate and upload the owner's public key as soon as they open the inbox.
+  // This ensures visiting visitors can always find the owner's key and encrypt immediately.
+  useEffect(() => {
+    const keyId = `room:${slug}`;
+    (async () => {
+      try {
+        const existing = await getPrivateKey(keyId);
+        if (!existing) {
+          console.log("[E2EE-Inbox] Generating owner keypair...");
+          const { publicKey, privateKey } = await generateKeyPair();
+          // Upload FIRST — only store locally if upload succeeds
+          await uploadOwnerPublicKey(slug, publicKey);
+          await storePrivateKey(keyId, privateKey);
+          console.log("[E2EE-Inbox] Owner key generated and uploaded");
+        } else {
+          // Key exists locally — verify it was uploaded to server, re-upload if not
+          const res = await fetch(`/api/rooms/${slug}/keys`);
+          if (res.ok) {
+            const data = await res.json();
+            if (!data.owner_public_key) {
+              console.log("[E2EE-Inbox] Key in IndexedDB but missing on server, re-uploading...");
+              // Extract the public part from the stored private JWK
+              const publicJwk: JsonWebKey = {
+                kty: existing.kty, n: existing.n, e: existing.e,
+                alg: existing.alg, ext: true, key_ops: ["encrypt"],
+              };
+              await uploadOwnerPublicKey(slug, publicJwk);
+              console.log("[E2EE-Inbox] Re-upload complete");
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[E2EE-Inbox] Key init error:", err);
+      }
+    })();
   }, [slug]);
 
   // Fetch conversations

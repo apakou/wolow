@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { relativeTime } from "@/lib/relative-time";
+import { useE2EE } from "@/lib/crypto/use-e2ee";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -18,11 +19,14 @@ export type Message = {
   is_owner: boolean;
   created_at: string;
   reply_to_message_id?: string | null;
+  encrypted_content?: string | null;
   reactions?: Reaction[];
   /** True while the optimistic insert is in-flight */
   pending?: boolean;
   /** True if the insert failed and the message should show as errored */
   failed?: boolean;
+  /** Decrypted plaintext (set client-side after decryption) */
+  decryptedContent?: string;
 };
 
 type SendMessageResponse = {
@@ -272,7 +276,7 @@ function Bubble({
     if (mostlyHorizontal && swipeTowardReply) {
       swipedForReplyRef.current = true;
       setPickerOpen(false);
-      onSwipeReply({ id: message.id, content: message.content, is_owner: message.is_owner });
+      onSwipeReply({ id: message.id, content: message.decryptedContent ?? message.content, is_owner: message.is_owner });
     }
   };
 
@@ -322,7 +326,10 @@ function Bubble({
             </p>
           </div>
         )}
-        {message.content}
+        {message.decryptedContent ?? message.content}
+        {message.encrypted_content && !message.failed && (
+          <span className="inline-block ml-1 text-[10px] opacity-50" title="End-to-end encrypted">🔒</span>
+        )}
         {message.failed && (
           <span className="block text-xs text-red-400 mt-1">Failed to send</span>
         )}
@@ -410,6 +417,35 @@ export default function ChatView({
   const bottomRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true); // track without re-render
 
+  const e2ee = useE2EE({ slug, conversationId, isOwnerView });
+
+  // Clear any "encryption not ready" error once E2EE becomes ready
+  useEffect(() => {
+    if (e2ee.ready) setError(null);
+  }, [e2ee.ready]);
+
+  // Decrypt a single message in-place (returns same ref if unencrypted)
+  const decryptMessageContent = useCallback(
+    async (msg: Message): Promise<Message> => {
+      if (!msg.encrypted_content || msg.decryptedContent) return msg;
+      try {
+        const plain = await e2ee.decrypt(msg.encrypted_content);
+        return { ...msg, decryptedContent: plain };
+      } catch {
+        return { ...msg, decryptedContent: "\u{1F512} Unable to decrypt" };
+      }
+    },
+    [e2ee.decrypt],
+  );
+
+  // Bulk-decrypt an array of messages
+  const decryptAll = useCallback(
+    async (msgs: Message[]): Promise<Message[]> => {
+      return Promise.all(msgs.map(decryptMessageContent));
+    },
+    [decryptMessageContent],
+  );
+
   const isReactionBusy = useCallback(
     (messageId: string, emoji: string) => !!reactionBusy[`${messageId}:${emoji}`],
     [reactionBusy]
@@ -420,7 +456,7 @@ export default function ChatView({
     for (const message of messages) {
       map.set(message.id, {
         id: message.id,
-        content: message.content,
+        content: message.decryptedContent ?? message.content,
         is_owner: message.is_owner,
       });
     }
@@ -503,12 +539,17 @@ export default function ChatView({
     const qs = conversationId ? `?conversation_id=${conversationId}` : "";
     fetch(`/api/rooms/${slug}/messages${qs}`)
       .then((r) => r.json())
-      .then((data: Message[]) => {
-        setMessages(data);
+      .then(async (data: Message[]) => {
+        if (!Array.isArray(data)) {
+          setLoaded(true);
+          return;
+        }
+        const decrypted = await decryptAll(data);
+        setMessages(decrypted);
         setLoaded(true);
       })
       .catch(() => setLoaded(true));
-  }, [slug, conversationId]);
+  }, [slug, conversationId, decryptAll]);
 
   // ── Realtime subscription ─────────────────────────────────────────────────
   useEffect(() => {
@@ -605,21 +646,25 @@ export default function ChatView({
         },
         (payload) => {
           const incoming = payload.new as Message;
-          setMessages((prev) => {
-            // Replace matching optimistic message or deduplicate
-            const optimisticIdx = prev.findIndex(
-              (m) => m.pending && m.content === incoming.content && m.is_owner === incoming.is_owner
-            );
-            if (optimisticIdx !== -1) {
-              const next = [...prev];
-              next[optimisticIdx] = incoming;
-              return next;
-            }
-            if (prev.some((m) => m.id === incoming.id)) return prev;
-            return [...prev, incoming];
+          // Decrypt if needed, then update state
+          decryptMessageContent(incoming).then((decrypted) => {
+            setMessages((prev) => {
+              // Deduplicate by ID first (POST response likely already replaced optimistic)
+              if (prev.some((m) => m.id === decrypted.id)) return prev;
+              // Replace matching optimistic message
+              const optimisticIdx = prev.findIndex(
+                (m) => m.pending && (m.decryptedContent ?? m.content) === (decrypted.decryptedContent ?? decrypted.content) && m.is_owner === decrypted.is_owner
+              );
+              if (optimisticIdx !== -1) {
+                const next = [...prev];
+                next[optimisticIdx] = decrypted;
+                return next;
+              }
+              return [...prev, decrypted];
+            });
+            // Show toast only if scrolled up
+            if (!atBottomRef.current) setNewMessageToast(true);
           });
-          // Show toast only if scrolled up
-          if (!atBottomRef.current) setNewMessageToast(true);
         }
       )
       .on(
@@ -691,11 +736,12 @@ export default function ChatView({
 
     const replyTargetId = replyTo?.id ?? null;
 
-    // Optimistic insert
+    // Optimistic insert — show the plaintext immediately
     const optimisticId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const optimistic: Message = {
       id: optimisticId,
       content,
+      decryptedContent: content,
       is_owner: isOwnerView,
       created_at: new Date().toISOString(),
       reply_to_message_id: replyTargetId,
@@ -709,13 +755,32 @@ export default function ChatView({
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
 
     try {
+      // E2EE is required — block if not ready
+      if (!e2ee.ready) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === optimisticId ? { ...m, pending: false, failed: true } : m))
+        );
+        setError("Encryption is still setting up. Please wait a moment and try again.");
+        return;
+      }
+
+      const encryptedContent = await e2ee.encrypt(content);
+      if (!encryptedContent) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === optimisticId ? { ...m, pending: false, failed: true } : m))
+        );
+        setError("Encryption failed. Please try again.");
+        return;
+      }
+
       const res = await fetch(`/api/rooms/${slug}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content,
+          content: "\u{1F512}",
           conversation_id: conversationId,
           reply_to_message_id: replyTargetId,
+          encrypted_content: encryptedContent,
         }),
       });
 
@@ -732,12 +797,13 @@ export default function ChatView({
 
       // Replace optimistic message immediately with authoritative server row.
       if (data.message?.id) {
+        const serverMsg = { ...data.message, decryptedContent: content };
         setMessages((prev) => {
           const withoutOptimistic = prev.filter((m) => m.id !== optimisticId);
-          if (withoutOptimistic.some((m) => m.id === data.message!.id)) {
+          if (withoutOptimistic.some((m) => m.id === serverMsg.id)) {
             return withoutOptimistic;
           }
-          return [...withoutOptimistic, data.message!];
+          return [...withoutOptimistic, serverMsg];
         });
       } else {
         setMessages((prev) =>
@@ -949,7 +1015,8 @@ export default function ChatView({
           />
           <button
             type="submit"
-            disabled={input.trim().length === 0}
+            disabled={input.trim().length === 0 || !e2ee.ready}
+            title={!e2ee.ready ? "Setting up encryption…" : undefined}
             className="shrink-0 bg-accent hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed
                        text-white p-3 rounded-2xl transition-all shadow-lg"
             aria-label="Send message"
@@ -963,9 +1030,16 @@ export default function ChatView({
             )}
           </button>
         </div>
-        <p className="text-right text-[11px] text-muted">
-          {input.length}/{MAX_LENGTH}
-        </p>
+        <div className="flex justify-between items-center">
+          {!e2ee.ready ? (
+            <p className="text-[11px] text-muted animate-pulse">Setting up encryption…</p>
+          ) : (
+            <span />
+          )}
+          <p className="text-[11px] text-muted">
+            {input.length}/{MAX_LENGTH}
+          </p>
+        </div>
       </form>
     </div>
   );
