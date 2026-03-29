@@ -50,7 +50,7 @@ export default function Home() {
               Send me anonymous messages
             </h1>
             <p className="mt-2 text-sm text-muted">
-              Create a link and share it — anyone can message you anonymously.
+              Create a link and share it - anyone can message you anonymously.
             </p>
           </div>
         </div>
