@@ -6,6 +6,7 @@ import { checkRateLimitDb } from "@/lib/rate-limit-db";
 import { logSecurityEvent } from "@/lib/security-logger";
 import { safeCompare } from "@/lib/safe-compare";
 import { logError } from "@/lib/error-logger";
+import { sendPushNotifications } from "@/lib/push-notify";
 
 type Params = { params: Promise<{ slug: string }> };
 
@@ -258,6 +259,16 @@ export async function POST(req: Request, { params }: Params) {
     logError({ message: "RPC returned no data", endpoint: `/api/rooms/${slug}/messages`, method: "POST", statusCode: 500, slug });
     return NextResponse.json({ error: "Failed to send message" }, { status: 500 });
   }
+
+  // Fire-and-forget push notification to the other party
+  void sendPushNotifications({
+    roomId: inserted.room_id,
+    slug,
+    conversationId: inserted.conversation_id,
+    senderIsOwner: inserted.is_owner,
+    // For E2EE messages, omit content preview to avoid leaking plaintext
+    contentPreview: hasEncrypted ? undefined : content,
+  });
 
   return NextResponse.json({ ok: true, message: inserted }, { status: 201 });
 }

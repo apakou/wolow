@@ -24,8 +24,31 @@ export default function GlobalErrorListener() {
 
     const onRejection = (event: PromiseRejectionEvent) => {
       const err = event.reason;
+
+      // Ignore errors from browser extensions — not actionable
+      if (
+        err instanceof Error &&
+        err.stack?.includes("chrome-extension://")
+      ) return;
+      if (
+        typeof err === "object" && err !== null &&
+        "stack" in err && typeof err.stack === "string" &&
+        err.stack.includes("chrome-extension://")
+      ) return;
+
+      let message: string;
+      if (err instanceof Error) {
+        message = err.message;
+      } else if (typeof err === "object" && err !== null && "message" in err) {
+        message = String((err as { message: unknown }).message);
+      } else if (typeof err === "string") {
+        message = err;
+      } else {
+        try { message = JSON.stringify(err); } catch { message = "Unhandled promise rejection"; }
+      }
+
       reportError({
-        message: err instanceof Error ? err.message : String(err),
+        message,
         stack: err instanceof Error ? err.stack : undefined,
         metadata: { type: "unhandledrejection" },
       });
