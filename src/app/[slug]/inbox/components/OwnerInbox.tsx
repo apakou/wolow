@@ -8,6 +8,7 @@ import { generateKeyPair } from "@/lib/crypto/generate-key-pair";
 import { getPrivateKey, storePrivateKey } from "@/lib/crypto/key-storage";
 import { uploadOwnerPublicKey } from "@/lib/crypto/upload-public-key";
 import { reportError } from "@/lib/report-error";
+import { usePushNotifications } from "@/lib/push/use-push-notifications";
 
 type Props = {
   roomId: string;
@@ -36,6 +37,12 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
   const [copied, setCopied] = useState(false);
   const [canShare, setCanShare] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
+  const [pushBannerDismissed, setPushBannerDismissed] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return !!localStorage.getItem(`push_banner_dismissed_${slug}`);
+  });
+
+  const push = usePushNotifications(slug, "owner");
 
   const unreadTotal = conversations.reduce((sum, c) => sum + c.unread_count, 0);
   const filtered = filter === "unread" ? conversations.filter((c) => c.unread_count > 0) : conversations;
@@ -211,6 +218,40 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
             </button>
           )}
         </div>
+
+        {/* Push notification prompt */}
+        {push.supported && !push.isSubscribed && !pushBannerDismissed && push.permission !== "denied" && (
+          <div className="rounded-2xl border border-white/20 bg-surface-light/70 backdrop-blur-md px-3 py-2">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[11px] text-slate-200 leading-snug">
+                Enable notifications to get alerted about new messages.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setPushBannerDismissed(true);
+                  localStorage.setItem(`push_banner_dismissed_${slug}`, "1");
+                }}
+                className="text-muted hover:text-white transition text-sm"
+                aria-label="Dismiss notification prompt"
+              >
+                ✕
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                await push.subscribe();
+                setPushBannerDismissed(true);
+                localStorage.setItem(`push_banner_dismissed_${slug}`, "1");
+              }}
+              disabled={push.loading}
+              className="mt-2 w-full rounded-xl bg-accent px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              {push.loading ? "Enabling..." : "Enable notifications"}
+            </button>
+          </div>
+        )}
 
         {/* Filter pills */}
         <div className="flex gap-2 mt-1">

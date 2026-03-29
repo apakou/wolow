@@ -65,3 +65,49 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
+
+// ── Push Notifications ──────────────────────────────────────────────────
+
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
+
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch {
+    payload = { title: "Wolow", body: event.data.text() || "New message" };
+  }
+
+  const { title = "Wolow", body = "New message", url, conversationId } = payload;
+
+  const options = {
+    body,
+    icon: "/icons/icon-192x192.png",
+    badge: "/icons/icon-192x192.png",
+    data: { url: url || "/" },
+    // Collapse notifications per conversation so the user isn't flooded
+    tag: conversationId || "wolow-default",
+    renotify: true,
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const targetUrl = event.notification.data?.url || "/";
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      // Focus an existing tab if one is already at the target URL
+      for (const client of clientList) {
+        if (new URL(client.url).pathname === targetUrl && "focus" in client) {
+          return client.focus();
+        }
+      }
+      // Otherwise open a new tab
+      return self.clients.openWindow(targetUrl);
+    })
+  );
+});

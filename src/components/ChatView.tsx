@@ -10,6 +10,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { relativeTime } from "@/lib/relative-time";
 import { useE2EE } from "@/lib/crypto/use-e2ee";
+import { usePushNotifications } from "@/lib/push/use-push-notifications";
 import { reportError } from "@/lib/report-error";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -81,6 +82,51 @@ function isStandaloneDisplayMode(): boolean {
     (window.navigator as Navigator & { standalone?: boolean }).standalone === true
   );
 }
+
+// ─── Notification Bell ───────────────────────────────────────────────────────
+
+function NotificationBell({
+  slug,
+  role,
+  conversationId,
+}: {
+  slug: string;
+  role: "owner" | "visitor";
+  conversationId?: string;
+}) {
+  const { supported, permission, isSubscribed, loading, subscribe, unsubscribe } =
+    usePushNotifications(slug, role, conversationId);
+
+  if (!supported) return null;
+
+  const denied = permission === "denied";
+  const active = isSubscribed && !denied;
+
+  return (
+    <button
+      type="button"
+      onClick={active ? unsubscribe : subscribe}
+      disabled={loading || denied}
+      className="shrink-0 p-1 rounded-lg text-muted hover:text-white transition disabled:opacity-40"
+      aria-label={active ? "Disable notifications" : "Enable notifications"}
+      title={denied ? "Notifications blocked — update browser settings" : active ? "Notifications on" : "Turn on notifications"}
+    >
+      {active ? (
+        /* Bell filled */
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-accent">
+          <path fillRule="evenodd" d="M5.25 9a6.75 6.75 0 0 1 13.5 0v.75c0 2.123.8 4.057 2.118 5.52a.75.75 0 0 1-.573 1.23H3.705a.75.75 0 0 1-.573-1.23A8.973 8.973 0 0 0 5.25 9.75V9ZM8.159 18.846c.069.216.16.424.271.62a3.598 3.598 0 0 0 7.14 0 3.18 3.18 0 0 0 .27-.62H8.16Z" clipRule="evenodd" />
+        </svg>
+      ) : (
+        /* Bell outline */
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function sortReactions(reactions: Reaction[]): Reaction[] {
   return [...reactions].sort((a, b) => b.count - a.count || a.emoji.localeCompare(b.emoji));
@@ -861,7 +907,7 @@ export default function ChatView({
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-dvh bg-app-gradient">
+    <div className="flex h-dvh flex-col overflow-hidden overscroll-none bg-app-gradient">
       {/* Header */}
       <header className="shrink-0 bg-header-gradient border-b border-border">
         {header ?? (
@@ -869,9 +915,12 @@ export default function ChatView({
             <p className="text-[10px] text-muted text-center uppercase tracking-[0.2em]">
               anonymous message for
             </p>
-            <h1 className="text-base font-bold text-white text-center truncate">
-              {displayName}
-            </h1>
+            <div className="flex items-center justify-center gap-2">
+              <h1 className="text-base font-bold text-white text-center truncate">
+                {displayName}
+              </h1>
+              <NotificationBell slug={slug} role={isOwnerView ? "owner" : "visitor"} conversationId={conversationId} />
+            </div>
             {!isOwnerView && (
               <div className="mt-3 flex flex-col items-center gap-2">
                 {showInstallPrompt && (
@@ -933,7 +982,7 @@ export default function ChatView({
       </header>
 
       {/* Scrollable message list */}
-      <div ref={scrollRef} className="relative flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {!loaded ? (
           <MessageSkeleton />
         ) : messages.length === 0 ? (
