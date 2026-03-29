@@ -35,7 +35,7 @@ type Room = {
 function WolowLogo() {
   return (
     <div className="rounded-2xl flex items-center justify-center">
-      <Image src="/logo-white.svg" alt="Wolow" width={52} height={52} priority />
+      <Image src="/logo-white.svg" alt="Wolow" width={52} height={52} priority style={{ width: "auto", height: "auto" }} />
     </div>
   );
 }
