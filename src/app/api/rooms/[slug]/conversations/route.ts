@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getFunAnonymousName } from "@/lib/fun-anonymous-name";
 import { logSecurityEvent } from "@/lib/security-logger";
+import { safeCompare } from "@/lib/safe-compare";
+import { logError } from "@/lib/error-logger";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type Params = { params: Promise<{ slug: string }> };
@@ -119,6 +121,7 @@ export async function POST(_req: Request, { params }: Params) {
     .single();
 
   if (error || !data) {
+    logError({ message: error?.message ?? "No data returned", endpoint: `/api/rooms/${slug}/conversations`, method: "POST", statusCode: 500, slug });
     return NextResponse.json({ error: "Failed to create conversation" }, { status: 500 });
   }
 
@@ -152,7 +155,7 @@ export async function GET(_req: Request, { params }: Params) {
 
   const cookieStore = await cookies();
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-  if (!ownerToken || ownerToken !== room.owner_token) {
+  if (!ownerToken || !safeCompare(ownerToken, room.owner_token)) {
     logSecurityEvent("auth_failure", { endpoint: "GET /conversations", slug });
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
@@ -174,6 +177,7 @@ export async function GET(_req: Request, { params }: Params) {
       .order("created_at", { ascending: true });
 
     if (fbErr || !fallback) {
+      logError({ message: fbErr?.message ?? "Fallback returned no data", endpoint: `/api/rooms/${slug}/conversations`, method: "GET", statusCode: 500, slug });
       return NextResponse.json({ error: "Failed to fetch conversations" }, { status: 500 });
     }
 
@@ -184,6 +188,7 @@ export async function GET(_req: Request, { params }: Params) {
   }
 
   if (error) {
+    logError({ message: error.message, endpoint: `/api/rooms/${slug}/conversations`, method: "GET", statusCode: 500, slug });
     return NextResponse.json({ error: "Failed to fetch conversations" }, { status: 500 });
   }
 
@@ -205,7 +210,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
   const cookieStore = await cookies();
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-  if (!ownerToken || ownerToken !== room.owner_token) {
+  if (!ownerToken || !safeCompare(ownerToken, room.owner_token)) {
     logSecurityEvent("auth_failure", { endpoint: "PATCH /conversations", slug });
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
@@ -234,6 +239,7 @@ export async function PATCH(req: Request, { params }: Params) {
     .eq("room_id", room.id);
 
   if (error) {
+    logError({ message: error.message, endpoint: `/api/rooms/${slug}/conversations`, method: "PATCH", statusCode: 500, slug });
     return NextResponse.json({ error: "Failed to mark as read" }, { status: 500 });
   }
 

@@ -4,11 +4,22 @@ import { createClient } from "@/lib/supabase/server";
 import { checkRateLimitDetailed, getClientIp, LIMITS } from "@/lib/rate-limit";
 import { checkRateLimitDb } from "@/lib/rate-limit-db";
 import { logSecurityEvent } from "@/lib/security-logger";
+import { safeCompare } from "@/lib/safe-compare";
+import { logError } from "@/lib/error-logger";
 
 type Params = { params: Promise<{ slug: string }> };
 
-function stripHtml(str: string): string {
-  return str.replace(/<[^>]*>/g, "");
+// A03: Strip all HTML tags and decode entities to prevent stored XSS.
+// Using a strict allowlist approach: extract only text content.
+function sanitizeText(str: string): string {
+  return str
+    .replace(/<[^>]*>/g, "")       // strip tags
+    .replace(/&lt;/gi, "<")         // decode common entities
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#x27;/gi, "'")
+    .replace(/&#x2F;/gi, "/");
 }
 
 async function getRoom(slug: string) {
@@ -34,12 +45,12 @@ export async function GET(req: Request, { params }: Params) {
 
   const cookieStore = await cookies();
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-  const viewerIsOwner = !!ownerToken && ownerToken === room.owner_token;
+  const viewerIsOwner = safeCompare(ownerToken, room.owner_token);
 
   const supabase = await createClient();
   let query = supabase
     .from("messages")
-    .select("id, content, is_owner, created_at, reply_to_message_id")
+    .select("id, content, is_owner, created_at, reply_to_message_id, encrypted_content")
     .eq("room_id", room.id);
 
   if (conversationId) {
@@ -51,7 +62,7 @@ export async function GET(req: Request, { params }: Params) {
   if (error?.message?.includes("reply_to_message_id")) {
     let fallbackQuery = supabase
       .from("messages")
-      .select("id, content, is_owner, created_at")
+      .select("id, content, is_owner, created_at, encrypted_content")
       .eq("room_id", room.id);
 
     if (conversationId) {
@@ -67,6 +78,7 @@ export async function GET(req: Request, { params }: Params) {
   }
 
   if (error) {
+    logError({ message: error.message, endpoint: `/api/rooms/${slug}/messages`, method: "GET", statusCode: 500, slug });
     return NextResponse.json({ error: "Failed to fetch messages" }, { status: 500 });
   }
 
@@ -82,6 +94,7 @@ export async function GET(req: Request, { params }: Params) {
     .in("message_id", messageIds);
 
   if (reactionsError) {
+    logError({ message: reactionsError.message, endpoint: `/api/rooms/${slug}/messages`, method: "GET", statusCode: 500, slug });
     return NextResponse.json({ error: "Failed to fetch reactions" }, { status: 500 });
   }
 
@@ -152,17 +165,34 @@ export async function POST(req: Request, { params }: Params) {
       ? ((body as Record<string, unknown>).content as string).trim()
       : "";
 
-  const content = stripHtml(raw).trim();
+  const content = sanitizeText(raw).trim();
 
-  if (content.length < 1) {
+  // When encrypted_content is provided, the plaintext `content` is a fallback placeholder.
+  // Validate the plaintext only when NOT end-to-end encrypted.
+  const hasEncrypted =
+    typeof (body as Record<string, unknown>).encrypted_content === "string" &&
+    ((body as Record<string, unknown>).encrypted_content as string).length > 0;
+
+  if (!hasEncrypted && content.length < 1) {
     return NextResponse.json({ error: "Message cannot be empty" }, { status: 422 });
   }
-  if (content.length > 1000) {
+  if (!hasEncrypted && content.length > 1000) {
     return NextResponse.json(
       { error: "Message must be 1000 characters or fewer" },
       { status: 422 }
     );
   }
+
+  // A04: Limit encrypted payload size to prevent abuse (max ~50 KB)
+  if (hasEncrypted && ((body as Record<string, unknown>).encrypted_content as string).length > 50_000) {
+    return NextResponse.json(
+      { error: "Encrypted payload too large" },
+      { status: 413 }
+    );
+  }
+
+  // For E2EE messages, store a placeholder so the DB content column is never null.
+  const storedContent = hasEncrypted ? "\u{1F512}" : content;
 
   // Determine if the sender is the room owner via httpOnly cookie
   const cookieStore = await cookies();
@@ -178,6 +208,16 @@ export async function POST(req: Request, { params }: Params) {
       ? ((body as Record<string, unknown>).reply_to_message_id as string)
       : null;
 
+  const encryptedContent =
+    typeof (body as Record<string, unknown>).encrypted_content === "string"
+      ? ((body as Record<string, unknown>).encrypted_content as string)
+      : null;
+
+  const senderPublicKeyId =
+    typeof (body as Record<string, unknown>).sender_public_key_id === "string"
+      ? ((body as Record<string, unknown>).sender_public_key_id as string)
+      : null;
+
   if (!conversationId) {
     return NextResponse.json({ error: "conversation_id is required" }, { status: 422 });
   }
@@ -187,9 +227,11 @@ export async function POST(req: Request, { params }: Params) {
   const { data, error } = await supabase.rpc("send_message_secure", {
     p_slug: slug,
     p_conversation_id: conversationId,
-    p_content: content,
+    p_content: storedContent,
     p_reply_to_message_id: replyToMessageId,
     p_owner_token: ownerToken ?? null,
+    p_encrypted_content: encryptedContent,
+    p_sender_public_key_id: senderPublicKeyId,
   });
 
   if (error) {
@@ -207,11 +249,13 @@ export async function POST(req: Request, { params }: Params) {
     if (msg.includes("REPLY_TARGET_WRONG_CONVERSATION")) {
       return NextResponse.json({ error: "Reply target must be in the same conversation" }, { status: 422 });
     }
+    logError({ message: msg, endpoint: `/api/rooms/${slug}/messages`, method: "POST", statusCode: 500, slug });
     return NextResponse.json({ error: "Failed to send message" }, { status: 500 });
   }
 
   const inserted = Array.isArray(data) ? data[0] : null;
   if (!inserted) {
+    logError({ message: "RPC returned no data", endpoint: `/api/rooms/${slug}/messages`, method: "POST", statusCode: 500, slug });
     return NextResponse.json({ error: "Failed to send message" }, { status: 500 });
   }
 

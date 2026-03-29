@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { logSecurityEvent } from "@/lib/security-logger";
 
 type RateLimitResult = { ok: true } | { ok: false; retryAfter: number };
 
@@ -25,7 +26,8 @@ export async function checkRateLimitDb(
     });
 
     if (error || !data || (data as unknown[]).length === 0) {
-      // Fail open: don't block users due to infra failure
+      // Fail open: don't block users due to infra failure, but log for monitoring
+      logSecurityEvent("rate_limit_hit", { endpoint: "db-rate-limit", ip: key, retryAfter: 0 });
       return { ok: true };
     }
 
@@ -35,7 +37,8 @@ export async function checkRateLimitDb(
     }
     return { ok: true };
   } catch {
-    // Fail open on unexpected errors
+    // Fail open on unexpected errors, but log for monitoring
+    logSecurityEvent("rate_limit_hit", { endpoint: "db-rate-limit-error", ip: key, retryAfter: 0 });
     return { ok: true };
   }
 }

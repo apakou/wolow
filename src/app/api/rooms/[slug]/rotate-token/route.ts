@@ -2,6 +2,8 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logSecurityEvent } from "@/lib/security-logger";
+import { safeCompare } from "@/lib/safe-compare";
+import { logError } from "@/lib/error-logger";
 
 type Params = { params: Promise<{ slug: string }> };
 
@@ -31,7 +33,7 @@ export async function POST(_req: Request, { params }: Params) {
   const cookieStore = await cookies();
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
 
-  if (!ownerToken || ownerToken !== room.owner_token) {
+  if (!ownerToken || !safeCompare(ownerToken, room.owner_token)) {
     logSecurityEvent("auth_failure", { endpoint: "POST /rotate-token", slug });
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
@@ -44,6 +46,7 @@ export async function POST(_req: Request, { params }: Params) {
     .eq("id", room.id);
 
   if (error) {
+    logError({ message: error.message, endpoint: `/api/rooms/${slug}/rotate-token`, method: "POST", statusCode: 500, slug });
     return NextResponse.json({ error: "Failed to rotate token" }, { status: 500 });
   }
 

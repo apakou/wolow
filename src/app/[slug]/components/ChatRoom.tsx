@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import ChatView from "@/components/ChatView";
+import { reportError } from "@/lib/report-error";
 
 type Props = {
   roomId: string;
@@ -23,7 +24,10 @@ export default function ChatRoom({ roomId, slug, displayName }: Props) {
           setError(true);
         }
       })
-      .catch(() => setError(true));
+      .catch((err: unknown) => {
+        reportError({ message: err instanceof Error ? err.message : "Failed to create conversation", endpoint: `/api/rooms/${slug}/conversations`, method: "POST", slug });
+        setError(true);
+      });
   }, [slug]);
 
   if (error) {
