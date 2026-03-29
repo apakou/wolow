@@ -7,6 +7,7 @@ import { relativeTime } from "@/lib/relative-time";
 import { generateKeyPair } from "@/lib/crypto/generate-key-pair";
 import { getPrivateKey, storePrivateKey } from "@/lib/crypto/key-storage";
 import { uploadOwnerPublicKey } from "@/lib/crypto/upload-public-key";
+import { reportError } from "@/lib/report-error";
 
 type Props = {
   roomId: string;
@@ -52,26 +53,22 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
       try {
         const existing = await getPrivateKey(keyId);
         if (!existing) {
-          console.log("[E2EE-Inbox] Generating owner keypair...");
           const { publicKey, privateKey } = await generateKeyPair();
           // Upload FIRST — only store locally if upload succeeds
           await uploadOwnerPublicKey(slug, publicKey);
           await storePrivateKey(keyId, privateKey);
-          console.log("[E2EE-Inbox] Owner key generated and uploaded");
         } else {
           // Key exists locally — verify it was uploaded to server, re-upload if not
           const res = await fetch(`/api/rooms/${slug}/keys`);
           if (res.ok) {
             const data = await res.json();
             if (!data.owner_public_key) {
-              console.log("[E2EE-Inbox] Key in IndexedDB but missing on server, re-uploading...");
               // Extract the public part from the stored private JWK
               const publicJwk: JsonWebKey = {
                 kty: existing.kty, n: existing.n, e: existing.e,
                 alg: existing.alg, ext: true, key_ops: ["encrypt"],
               };
               await uploadOwnerPublicKey(slug, publicJwk);
-              console.log("[E2EE-Inbox] Re-upload complete");
             }
           }
         }
@@ -91,7 +88,10 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
         }
         setLoaded(true);
       })
-      .catch(() => setLoaded(true));
+      .catch((err: unknown) => {
+        reportError({ message: err instanceof Error ? err.message : "Failed to fetch conversations", endpoint: `/api/rooms/${slug}/conversations`, slug });
+        setLoaded(true);
+      });
   }, [slug]);
 
   // Realtime: listen for new messages in ANY conversation for this room

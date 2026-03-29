@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { checkRateLimitDetailed, getClientIp, LIMITS } from "@/lib/rate-limit";
 import { checkRateLimitDb } from "@/lib/rate-limit-db";
 import { logSecurityEvent } from "@/lib/security-logger";
+import { logError } from "@/lib/error-logger";
 
 export async function POST(request: Request) {
   // Hybrid rate limiting for low latency and cross-instance enforcement.
@@ -55,6 +56,7 @@ export async function POST(request: Request) {
     .insert({ slug, owner_token, display_name });
 
   if (error) {
+    logError({ message: error.message, endpoint: "/api/rooms", method: "POST", statusCode: 500 });
     return NextResponse.json({ error: "Failed to create room" }, { status: 500 });
   }
 

@@ -10,6 +10,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { relativeTime } from "@/lib/relative-time";
 import { useE2EE } from "@/lib/crypto/use-e2ee";
+import { reportError } from "@/lib/report-error";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -548,7 +549,10 @@ export default function ChatView({
         setMessages(decrypted);
         setLoaded(true);
       })
-      .catch(() => setLoaded(true));
+      .catch((err: unknown) => {
+        reportError({ message: err instanceof Error ? err.message : "Failed to fetch messages", endpoint: `/api/rooms/${slug}/messages`, slug });
+        setLoaded(true);
+      });
   }, [slug, conversationId, decryptAll]);
 
   // ── Realtime subscription ─────────────────────────────────────────────────
@@ -810,10 +814,11 @@ export default function ChatView({
           prev.map((m) => (m.id === optimisticId ? { ...m, pending: false } : m))
         );
       }
-    } catch {
+    } catch (err) {
       setMessages((prev) =>
         prev.map((m) => (m.id === optimisticId ? { ...m, pending: false, failed: true } : m))
       );
+      reportError({ message: err instanceof Error ? err.message : "Send message network error", endpoint: `/api/rooms/${slug}/messages`, method: "POST", slug });
       setError("Network error — please try again");
     }
   }
@@ -838,10 +843,11 @@ export default function ChatView({
         );
         setError("Could not update reaction. Please try again.");
       }
-    } catch {
+    } catch (err) {
       setMessages((prev) =>
         updateMessageReaction(prev, messageId, emoji, hasReacted ? "add" : "remove")
       );
+      reportError({ message: err instanceof Error ? err.message : "Reaction network error", endpoint: `/api/rooms/${slug}/reactions`, slug });
       setError("Network error while updating reaction.");
     } finally {
       setReactionBusy((prev) => {

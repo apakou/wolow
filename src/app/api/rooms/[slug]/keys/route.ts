@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { safeCompare } from "@/lib/safe-compare";
+import { logError } from "@/lib/error-logger";
 
 type Params = { params: Promise<{ slug: string }> };
 
@@ -63,7 +65,7 @@ export async function PUT(req: Request, { params }: Params) {
 
   const cookieStore = await cookies();
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-  if (!ownerToken || ownerToken !== room.owner_token) {
+  if (!ownerToken || !safeCompare(ownerToken, room.owner_token)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
@@ -91,6 +93,7 @@ export async function PUT(req: Request, { params }: Params) {
   });
 
   if (error) {
+    logError({ message: error.message, endpoint: `/api/rooms/${slug}/keys`, method: "PUT", statusCode: 500, slug });
     return NextResponse.json({ error: "Failed to store key" }, { status: 500 });
   }
 

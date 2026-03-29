@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { safeCompare } from "@/lib/safe-compare";
+import { logError } from "@/lib/error-logger";
 
 type Params = { params: Promise<{ slug: string }> };
 
@@ -67,7 +69,7 @@ export async function PUT(req: Request, { params }: Params) {
   }
 
   // Only the conversation's sender can set the visitor public key
-  const isSender = senderToken && senderToken === conv.sender_token;
+  const isSender = safeCompare(senderToken, conv.sender_token);
 
   if (!isSender) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
@@ -83,6 +85,7 @@ export async function PUT(req: Request, { params }: Params) {
     .eq("id", conversationId);
 
   if (error) {
+    logError({ message: error.message, endpoint: `/api/rooms/${slug}/conversations/keys`, method: "PUT", statusCode: 500, slug });
     return NextResponse.json({ error: "Failed to store key" }, { status: 500 });
   }
 

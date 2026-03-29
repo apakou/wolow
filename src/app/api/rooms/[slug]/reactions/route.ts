@@ -2,6 +2,8 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logSecurityEvent } from "@/lib/security-logger";
+import { safeCompare } from "@/lib/safe-compare";
+import { logError } from "@/lib/error-logger";
 
 type Params = { params: Promise<{ slug: string }> };
 
@@ -33,7 +35,7 @@ async function resolveActor(slug: string, ownerTokenFromRoom: string) {
   const cookieStore = await cookies();
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
   const senderToken = cookieStore.get(`sender_${slug}`)?.value;
-  const isOwner = !!ownerToken && ownerToken === ownerTokenFromRoom;
+  const isOwner = safeCompare(ownerToken, ownerTokenFromRoom);
 
   // Any owner can react; sender must have the sender cookie for this room.
   if (!isOwner && !senderToken) {
@@ -102,6 +104,7 @@ export async function POST(req: Request, { params }: Params) {
       .eq("is_owner", actor.isOwner);
 
     if (clearError) {
+      logError({ message: clearError.message, endpoint: `/api/rooms/${slug}/reactions`, method: "POST", statusCode: 500, slug });
       return NextResponse.json({ error: "Failed to add reaction" }, { status: 500 });
     }
 
@@ -110,6 +113,7 @@ export async function POST(req: Request, { params }: Params) {
       .insert({ message_id: messageId, emoji, is_owner: actor.isOwner });
 
     if (insertError && insertError.code !== "23505") {
+      logError({ message: insertError.message, endpoint: `/api/rooms/${slug}/reactions`, method: "POST", statusCode: 500, slug });
       return NextResponse.json({ error: "Failed to add reaction" }, { status: 500 });
     }
 
@@ -118,6 +122,7 @@ export async function POST(req: Request, { params }: Params) {
 
   // Duplicate insert is fine for idempotency.
   if (error && error.code !== "23505") {
+    logError({ message: error.message, endpoint: `/api/rooms/${slug}/reactions`, method: "POST", statusCode: 500, slug });
     return NextResponse.json({ error: "Failed to add reaction" }, { status: 500 });
   }
 
@@ -165,6 +170,7 @@ export async function DELETE(req: Request, { params }: Params) {
     .eq("is_owner", actor.isOwner);
 
   if (error) {
+    logError({ message: error.message, endpoint: `/api/rooms/${slug}/reactions`, method: "DELETE", statusCode: 500, slug });
     return NextResponse.json({ error: "Failed to remove reaction" }, { status: 500 });
   }
 

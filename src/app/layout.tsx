@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import GlobalErrorListener from "@/components/GlobalErrorListener";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -48,7 +50,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body suppressHydrationWarning className="min-h-full flex flex-col">
-        {children}
+        <ErrorBoundary>
+          <GlobalErrorListener />
+          {children}
+        </ErrorBoundary>
         <Script id="register-sw" strategy="afterInteractive">
           {`
             if ('serviceWorker' in navigator) {
