@@ -26,7 +26,7 @@ async function getRoom(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("rooms")
-    .select("id, owner_token")
+    .select("id, owner_token, user_id")
     .eq("slug", slug)
     .single();
   return data ?? null;
@@ -45,7 +45,10 @@ export async function GET(req: Request, { params }: Params) {
 
   const cookieStore = await cookies();
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-  const viewerIsOwner = safeCompare(ownerToken, room.owner_token);
+  const {
+    data: { user },
+  } = await (await createClient()).auth.getUser();
+  const viewerIsOwner = safeCompare(ownerToken, room.owner_token) || (!!user && !!room.user_id && user.id === room.user_id);
 
   const supabase = await createClient();
   let query = supabase

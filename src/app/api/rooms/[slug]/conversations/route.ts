@@ -15,7 +15,7 @@ async function getRoom(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("rooms")
-    .select("id, owner_token")
+    .select("id, owner_token, user_id")
     .eq("slug", slug)
     .single();
   return data ?? null;
@@ -105,16 +105,40 @@ export async function POST(_req: Request, { params }: Params) {
   let senderToken = cookieStore.get(`sender_${slug}`)?.value;
   const isNewSender = !senderToken;
 
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    const { data: existingConversation } = await supabase
+      .from("conversations")
+      .select("id, sender_token")
+      .eq("room_id", room.id)
+      .eq("user_id", user.id)
+      .single();
+
+    if (existingConversation) {
+      const res = NextResponse.json({ conversation_id: existingConversation.id });
+      res.cookies.set(`sender_${slug}`, existingConversation.sender_token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 365,
+      });
+      return res;
+    }
+  }
+
   if (!senderToken) {
     senderToken = crypto.randomUUID();
   }
 
-  const supabase = await createClient();
-
   const { data, error } = await supabase
     .from("conversations")
     .upsert(
-      { room_id: room.id, sender_token: senderToken },
+      { room_id: room.id, sender_token: senderToken, user_id: user?.id ?? null },
       { onConflict: "room_id,sender_token" }
     )
     .select("id")
@@ -153,14 +177,20 @@ export async function GET(_req: Request, { params }: Params) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   const cookieStore = await cookies();
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-  if (!ownerToken || !safeCompare(ownerToken, room.owner_token)) {
+  const authorizedByToken = !!ownerToken && safeCompare(ownerToken, room.owner_token);
+  const authorizedByUser = !!user && !!room.user_id && user.id === room.user_id;
+
+  if (!authorizedByToken && !authorizedByUser) {
     logSecurityEvent("auth_failure", { endpoint: "GET /conversations", slug });
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
-
-  const supabase = await createClient();
 
   // Try with owner_last_read_at first; fall back if column doesn't exist yet
   const { data: conversations, error } = await supabase
@@ -208,9 +238,17 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   const cookieStore = await cookies();
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-  if (!ownerToken || !safeCompare(ownerToken, room.owner_token)) {
+  const authorizedByToken = !!ownerToken && safeCompare(ownerToken, room.owner_token);
+  const authorizedByUser = !!user && !!room.user_id && user.id === room.user_id;
+
+  if (!authorizedByToken && !authorizedByUser) {
     logSecurityEvent("auth_failure", { endpoint: "PATCH /conversations", slug });
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
@@ -231,7 +269,6 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json({ error: "conversation_id is required" }, { status: 422 });
   }
 
-  const supabase = await createClient();
   const { error } = await supabase
     .from("conversations")
     .update({ owner_last_read_at: new Date().toISOString() })

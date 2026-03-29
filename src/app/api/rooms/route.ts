@@ -8,6 +8,15 @@ import { logSecurityEvent } from "@/lib/security-logger";
 import { logError } from "@/lib/error-logger";
 
 export async function POST(request: Request) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+  }
+
   // Hybrid rate limiting for low latency and cross-instance enforcement.
   const ip = getClientIp(request);
   const key = `create-room:${ip}`;
@@ -50,10 +59,9 @@ export async function POST(request: Request) {
   const owner_token = crypto.randomUUID();
   const display_name = rawName || "Anonymous";
 
-  const supabase = await createClient();
   const { error } = await supabase
     .from("rooms")
-    .insert({ slug, owner_token, display_name });
+    .insert({ slug, owner_token, display_name, user_id: user.id });
 
   if (error) {
     logError({ message: error.message, endpoint: "/api/rooms", method: "POST", statusCode: 500 });

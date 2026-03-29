@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
+import { safeCompare } from "@/lib/safe-compare";
 import OwnerInbox from "./components/OwnerInbox";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -14,19 +15,22 @@ export default async function InboxPage({ params }: Props) {
   const cookieStore = await cookies();
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
 
-  if (!ownerToken) {
-    redirect(`/${slug}`);
-  }
-
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   const { data: room } = await supabase
     .from("rooms")
-    .select("id, slug, display_name, owner_token")
+    .select("id, slug, display_name, owner_token, user_id")
     .eq("slug", slug)
     .single();
 
-  if (!room || room.owner_token !== ownerToken) {
-    redirect(`/${slug}`);
+  const authorizedByToken = !!ownerToken && !!room && safeCompare(ownerToken, room.owner_token);
+  const authorizedByUser = !!user && !!room?.user_id && user.id === room.user_id;
+
+  if (!room || (!authorizedByToken && !authorizedByUser)) {
+    redirect("/");
   }
 
   return (

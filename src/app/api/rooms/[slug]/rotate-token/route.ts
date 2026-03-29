@@ -22,7 +22,7 @@ export async function POST(_req: Request, { params }: Params) {
   const supabase = await createClient();
   const { data: room } = await supabase
     .from("rooms")
-    .select("id, owner_token")
+    .select("id, owner_token, user_id")
     .eq("slug", slug)
     .single();
 
@@ -32,8 +32,14 @@ export async function POST(_req: Request, { params }: Params) {
 
   const cookieStore = await cookies();
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!ownerToken || !safeCompare(ownerToken, room.owner_token)) {
+  const authorizedByToken = !!ownerToken && safeCompare(ownerToken, room.owner_token);
+  const authorizedByUser = !!user && !!room.user_id && user.id === room.user_id;
+
+  if (!authorizedByToken && !authorizedByUser) {
     logSecurityEvent("auth_failure", { endpoint: "POST /rotate-token", slug });
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }

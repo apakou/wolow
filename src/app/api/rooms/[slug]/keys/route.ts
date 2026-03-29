@@ -10,7 +10,7 @@ async function getRoom(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("rooms")
-    .select("id, owner_token, owner_public_key")
+    .select("id, owner_token, owner_public_key, user_id")
     .eq("slug", slug)
     .single();
   return data ?? null;
@@ -65,7 +65,13 @@ export async function PUT(req: Request, { params }: Params) {
 
   const cookieStore = await cookies();
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-  if (!ownerToken || !safeCompare(ownerToken, room.owner_token)) {
+  const {
+    data: { user },
+  } = await (await createClient()).auth.getUser();
+  const authorizedByToken = !!ownerToken && safeCompare(ownerToken, room.owner_token);
+  const authorizedByUser = !!user && !!room.user_id && user.id === room.user_id;
+
+  if (!authorizedByToken && !authorizedByUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
@@ -86,11 +92,16 @@ export async function PUT(req: Request, { params }: Params) {
   }
 
   const supabase = await createClient();
-  const { data: success, error } = await supabase.rpc("set_owner_public_key", {
-    p_room_id: room.id,
-    p_owner_token: ownerToken,
-    p_public_key: publicKey,
-  });
+  const { error } = authorizedByToken
+    ? await supabase.rpc("set_owner_public_key", {
+        p_room_id: room.id,
+        p_owner_token: ownerToken,
+        p_public_key: publicKey,
+      })
+    : await supabase.rpc("set_owner_public_key_for_user", {
+        p_room_id: room.id,
+        p_public_key: publicKey,
+      });
 
   if (error) {
     logError({ message: error.message, endpoint: `/api/rooms/${slug}/keys`, method: "PUT", statusCode: 500, slug });

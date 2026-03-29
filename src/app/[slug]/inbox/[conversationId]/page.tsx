@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { getFunAnonymousName } from "@/lib/fun-anonymous-name";
+import { safeCompare } from "@/lib/safe-compare";
 import OwnerThread from "./components/OwnerThread";
 
 type Props = { params: Promise<{ slug: string; conversationId: string }> };
@@ -15,21 +16,24 @@ export default async function ConversationPage({ params }: Props) {
   // Verify owner
   const cookieStore = await cookies();
   const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-  if (!ownerToken) {
-    redirect(`/${slug}`);
-  }
 
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   // Load room
   const { data: room } = await supabase
     .from("rooms")
-    .select("id, slug, display_name, owner_token")
+    .select("id, slug, display_name, owner_token, user_id")
     .eq("slug", slug)
     .single();
 
-  if (!room || room.owner_token !== ownerToken) {
-    redirect(`/${slug}`);
+  const authorizedByToken = !!ownerToken && !!room && safeCompare(ownerToken, room.owner_token);
+  const authorizedByUser = !!user && !!room?.user_id && user.id === room.user_id;
+
+  if (!room || (!authorizedByToken && !authorizedByUser)) {
+    redirect("/");
   }
 
   // Verify conversation belongs to this room

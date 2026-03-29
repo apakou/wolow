@@ -56,6 +56,10 @@ type Props = {
   /** Extra content rendered inside the header (e.g. share bar for owner) */
   header?: HeaderSlot;
   inputPlaceholder?: string;
+  /** Optional extra UI under the default header (e.g. sign-in button). */
+  headerExtra?: React.ReactNode;
+  /** Optional mobile-only bottom navigation row (e.g. Home/Inbox quick actions). */
+  mobileBottomNav?: React.ReactNode;
 };
 
 const MAX_LENGTH = 1000;
@@ -402,6 +406,8 @@ export default function ChatView({
   isOwnerView = false,
   header,
   inputPlaceholder,
+  headerExtra,
+  mobileBottomNav,
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -928,6 +934,7 @@ export default function ChatView({
                 </a>
               </div>
             )}
+            {headerExtra}
           </div>
         )}
       </header>
@@ -983,7 +990,9 @@ export default function ChatView({
       {/* Input */}
       <form
         onSubmit={handleSubmit}
-        className="shrink-0 border-t border-border bg-surface/80 backdrop-blur-lg px-4 py-3 flex flex-col gap-2"
+        className={`shrink-0 border-t border-border bg-surface/80 backdrop-blur-lg px-4 py-3 flex flex-col gap-2 ${
+          mobileBottomNav ? "mb-16 md:mb-0" : ""
+        }`}
       >
         {error && <p className="text-xs text-red-400">{error}</p>}
         {replyTo && (
@@ -1047,6 +1056,12 @@ export default function ChatView({
           </p>
         </div>
       </form>
+
+      {mobileBottomNav && (
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-surface/90 backdrop-blur-lg px-4 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]">
+          {mobileBottomNav}
+        </nav>
+      )}
     </div>
   );
 }

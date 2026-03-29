@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ChatView from "@/components/ChatView";
+import GoogleSignIn from "@/components/GoogleSignIn";
+import { useAuth } from "@/hooks/use-auth";
 import { reportError } from "@/lib/report-error";
 
 type Props = {
@@ -13,6 +15,8 @@ type Props = {
 export default function ChatRoom({ roomId, slug, displayName }: Props) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [error, setError] = useState(false);
+  const { user } = useAuth();
+  const claimedRef = useRef(false);
 
   useEffect(() => {
     fetch(`/api/rooms/${slug}/conversations`, { method: "POST" })
@@ -29,6 +33,17 @@ export default function ChatRoom({ roomId, slug, displayName }: Props) {
         setError(true);
       });
   }, [slug]);
+
+  useEffect(() => {
+    if (!user || !conversationId || claimedRef.current) return;
+    claimedRef.current = true;
+
+    void fetch("/api/claim-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, role: "sender" }),
+    });
+  }, [user, conversationId, slug]);
 
   if (error) {
     return (
@@ -60,6 +75,7 @@ export default function ChatRoom({ roomId, slug, displayName }: Props) {
       displayName={displayName}
       conversationId={conversationId}
       inputPlaceholder={`Send ${displayName} an anonymous message…`}
+      headerExtra={<GoogleSignIn returnTo={`/${slug}`} />}
     />
   );
 }
