@@ -53,11 +53,16 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
 
   // Show push popup if not already subscribed/dismissed
   useEffect(() => {
+    const dismissedVal = localStorage.getItem(`push_popup_dismissed_${slug}`);
+    const dismissedTs = parseInt(dismissedVal ?? "", 10);
+    const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+    const isDismissed =
+      !!dismissedVal && (isNaN(dismissedTs) || Date.now() - dismissedTs < THREE_DAYS);
     if (
       push.supported &&
       !push.isSubscribed &&
       push.permission !== "denied" &&
-      !localStorage.getItem(`push_popup_dismissed_${slug}`)
+      !isDismissed
     ) {
       const timer = setTimeout(() => setShowPushPopup(true), 1500);
       return () => clearTimeout(timer);
@@ -422,7 +427,6 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
               onClick={async () => {
                 await push.subscribe();
                 setShowPushPopup(false);
-                localStorage.setItem(`push_popup_dismissed_${slug}`, "1");
               }}
               disabled={push.loading}
               className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
@@ -433,7 +437,7 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
               type="button"
               onClick={() => {
                 setShowPushPopup(false);
-                localStorage.setItem(`push_popup_dismissed_${slug}`, "1");
+                localStorage.setItem(`push_popup_dismissed_${slug}`, String(Date.now()));
               }}
               className="text-xs text-muted hover:text-slate-300 transition"
             >

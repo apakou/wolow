@@ -90,7 +90,22 @@ self.addEventListener("push", (event) => {
     renotify: true,
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        // Skip notification if the target page is already open and focused
+        const isFocused =
+          url != null &&
+          clients.some(
+            (c) =>
+              c.visibilityState === "visible" &&
+              new URL(c.url).pathname === url
+          );
+        if (isFocused) return;
+        return self.registration.showNotification(title, options);
+      })
+  );
 });
 
 self.addEventListener("notificationclick", (event) => {

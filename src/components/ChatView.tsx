@@ -472,14 +472,20 @@ export default function ChatView({
   const push = usePushNotifications(slug, isOwnerView ? "owner" : "visitor", conversationId);
   const e2ee = useE2EE({ slug, conversationId, isOwnerView });
 
-  // Show push popup once messages load, if not yet subscribed and not previously dismissed
+  // Show push popup once messages load, if not yet subscribed and not recently dismissed
   useEffect(() => {
+    const dismissedVal = localStorage.getItem(`push_popup_dismissed_${slug}`);
+    const dismissedTs = parseInt(dismissedVal ?? "", 10);
+    // Treat old "1" value (ts=1, year 1970) or a timestamp within the last 3 days as dismissed
+    const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+    const isDismissed =
+      !!dismissedVal && (isNaN(dismissedTs) || Date.now() - dismissedTs < THREE_DAYS);
     if (
       loaded &&
       push.supported &&
       !push.isSubscribed &&
       push.permission !== "denied" &&
-      !localStorage.getItem(`push_popup_dismissed_${slug}`)
+      !isDismissed
     ) {
       const timer = setTimeout(() => setShowPushPopup(true), 1500);
       return () => clearTimeout(timer);
@@ -1189,7 +1195,6 @@ export default function ChatView({
               onClick={async () => {
                 await push.subscribe();
                 setShowPushPopup(false);
-                localStorage.setItem(`push_popup_dismissed_${slug}`, "1");
               }}
               disabled={push.loading}
               className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
@@ -1201,7 +1206,8 @@ export default function ChatView({
               type="button"
               onClick={() => {
                 setShowPushPopup(false);
-                localStorage.setItem(`push_popup_dismissed_${slug}`, "1");
+                // Snooze for 3 days — store current timestamp so the popup can re-appear later
+                localStorage.setItem(`push_popup_dismissed_${slug}`, String(Date.now()));
               }}
               className="text-xs text-muted hover:text-slate-300 transition"
             >
