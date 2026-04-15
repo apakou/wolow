@@ -7,6 +7,30 @@ import { checkRateLimitDb } from "@/lib/rate-limit-db";
 import { logSecurityEvent } from "@/lib/security-logger";
 import { logError } from "@/lib/error-logger";
 
+/**
+ * GET — list rooms owned by the authenticated user.
+ */
+export async function GET() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { data: rooms, error } = await supabase
+    .from("rooms")
+    .select("id, slug, display_name, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    logError({ message: error.message, endpoint: "/api/rooms", method: "GET", statusCode: 500 });
+    return NextResponse.json({ error: "Failed to fetch rooms" }, { status: 500 });
+  }
+
+  return NextResponse.json(rooms ?? []);
+}
+
 export async function POST(request: Request) {
   // Hybrid rate limiting for low latency and cross-instance enforcement.
   const ip = getClientIp(request);
@@ -46,14 +70,21 @@ export async function POST(request: Request) {
     );
   }
 
+  const supabase = await createClient();
+
+  // Require authentication — rooms must be linked to an account
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "You must be signed in to create a room" }, { status: 401 });
+  }
+
   const slug = nanoid(10);
   const owner_token = crypto.randomUUID();
   const display_name = rawName || "Anonymous";
 
-  const supabase = await createClient();
   const { error } = await supabase
     .from("rooms")
-    .insert({ slug, owner_token, display_name });
+    .insert({ slug, owner_token, display_name, user_id: user.id });
 
   if (error) {
     logError({ message: error.message, endpoint: "/api/rooms", method: "POST", statusCode: 500 });

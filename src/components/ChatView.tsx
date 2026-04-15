@@ -29,6 +29,8 @@ export type Message = {
   failed?: boolean;
   /** Decrypted plaintext (set client-side after decryption) */
   decryptedContent?: string;
+  /** True when the message was received via broadcast (before DB confirms) */
+  _fromBroadcast?: boolean;
 };
 
 type SendMessageResponse = {
@@ -464,18 +466,26 @@ export default function ChatView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true); // track without re-render
+  // Holds the active Supabase realtime channel so handleSubmit can broadcast instantly
+  const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null);
 
   const push = usePushNotifications(slug, isOwnerView ? "owner" : "visitor", conversationId);
   const e2ee = useE2EE({ slug, conversationId, isOwnerView });
 
-  // Show push popup once messages load, if not yet subscribed and not previously dismissed
+  // Show push popup once messages load, if not yet subscribed and not recently dismissed
   useEffect(() => {
+    const dismissedVal = localStorage.getItem(`push_popup_dismissed_${slug}`);
+    const dismissedTs = parseInt(dismissedVal ?? "", 10);
+    // Treat old "1" value (ts=1, year 1970) or a timestamp within the last 3 days as dismissed
+    const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+    const isDismissed =
+      !!dismissedVal && (isNaN(dismissedTs) || Date.now() - dismissedTs < THREE_DAYS);
     if (
       loaded &&
       push.supported &&
       !push.isSubscribed &&
       push.permission !== "denied" &&
-      !localStorage.getItem(`push_popup_dismissed_${slug}`)
+      !isDismissed
     ) {
       const timer = setTimeout(() => setShowPushPopup(true), 1500);
       return () => clearTimeout(timer);
@@ -703,6 +713,22 @@ export default function ChatView({
     const channel = supabase
       .channel(`chat:${conversationId ?? roomId}`)
       .on(
+        "broadcast",
+        { event: "new_message" },
+        (event) => {
+          const incoming = event.payload as Message & { optimistic_id?: string };
+          // Skip our own broadcasts (we already have the optimistic message)
+          if (incoming.is_owner === isOwnerView) return;
+          decryptMessageContent(incoming).then((decrypted) => {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === decrypted.id || (incoming.optimistic_id && m.id === incoming.optimistic_id))) return prev;
+              return [...prev, { ...decrypted, _fromBroadcast: true }];
+            });
+            if (!atBottomRef.current) setNewMessageToast(true);
+          });
+        }
+      )
+      .on(
         "postgres_changes",
         {
           event: "INSERT",
@@ -717,13 +743,16 @@ export default function ChatView({
             setMessages((prev) => {
               // Deduplicate by ID first (POST response likely already replaced optimistic)
               if (prev.some((m) => m.id === decrypted.id)) return prev;
-              // Replace matching optimistic message
-              const optimisticIdx = prev.findIndex(
-                (m) => m.pending && (m.decryptedContent ?? m.content) === (decrypted.decryptedContent ?? decrypted.content) && m.is_owner === decrypted.is_owner
+              // Replace matching optimistic OR broadcast-placeholder message
+              const placeholderIdx = prev.findIndex(
+                (m) =>
+                  (m.pending || m._fromBroadcast) &&
+                  (m.decryptedContent ?? m.content) === (decrypted.decryptedContent ?? decrypted.content) &&
+                  m.is_owner === decrypted.is_owner
               );
-              if (optimisticIdx !== -1) {
+              if (placeholderIdx !== -1) {
                 const next = [...prev];
-                next[optimisticIdx] = decrypted;
+                next[placeholderIdx] = decrypted;
                 return next;
               }
               return [...prev, decrypted];
@@ -773,7 +802,11 @@ export default function ChatView({
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    channelRef.current = channel;
+    return () => {
+      channelRef.current = null;
+      supabase.removeChannel(channel);
+    };
   }, [roomId, conversationId]);
 
   // ── Auto-scroll when at bottom ────────────────────────────────────────────
@@ -800,6 +833,13 @@ export default function ChatView({
     const content = input.trim();
     if (!content) return;
 
+    // Guard: crypto is available but E2EE not ready yet
+    const cryptoAvailable = typeof crypto !== "undefined" && !!crypto.subtle;
+    if (cryptoAvailable && !e2ee.ready) {
+      setError("Encryption is still setting up. Please wait a moment and try again.");
+      return;
+    }
+
     const replyTargetId = replyTo?.id ?? null;
 
     // Optimistic insert — show the plaintext immediately
@@ -821,33 +861,54 @@ export default function ChatView({
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
 
     try {
-      // E2EE is required — block if not ready
-      if (!e2ee.ready) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === optimisticId ? { ...m, pending: false, failed: true } : m))
-        );
-        setError("Encryption is still setting up. Please wait a moment and try again.");
-        return;
-      }
+      // E2EE: encrypt if available, send plaintext if crypto is unavailable (non-HTTPS dev)
+      let bodyPayload: Record<string, unknown>;
 
-      const encryptedContent = await e2ee.encrypt(content);
-      if (!encryptedContent) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === optimisticId ? { ...m, pending: false, failed: true } : m))
-        );
-        setError("Encryption failed. Please try again.");
-        return;
-      }
-
-      const res = await fetch(`/api/rooms/${slug}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      if (cryptoAvailable && e2ee.ready) {
+        const encryptedContent = await e2ee.encrypt(content);
+        if (!encryptedContent) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === optimisticId ? { ...m, pending: false, failed: true } : m))
+          );
+          setError("Encryption failed. Please try again.");
+          return;
+        }
+        bodyPayload = {
           content: "\u{1F512}",
           conversation_id: conversationId,
           reply_to_message_id: replyTargetId,
           encrypted_content: encryptedContent,
-        }),
+        };
+      } else {
+        // No crypto (insecure context) — send unencrypted
+        bodyPayload = {
+          content,
+          conversation_id: conversationId,
+          reply_to_message_id: replyTargetId,
+        };
+      }
+
+      // Broadcast over the open WebSocket channel for instant delivery to the other party.
+      // The postgres_changes event will arrive later and just deduplicate.
+      channelRef.current?.send({
+        type: "broadcast",
+        event: "new_message",
+        payload: {
+          id: optimisticId,
+          optimistic_id: optimisticId,
+          content: bodyPayload.encrypted_content ? "\u{1F512}" : content,
+          decryptedContent: content,
+          encrypted_content: bodyPayload.encrypted_content ?? null,
+          is_owner: isOwnerView,
+          created_at: optimistic.created_at,
+          reply_to_message_id: replyTargetId,
+        },
+      });
+
+      const res = await fetch(`/api/rooms/${slug}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bodyPayload),
       });
 
       const data = (await res.json()) as SendMessageResponse;
@@ -1086,8 +1147,8 @@ export default function ChatView({
           />
           <button
             type="submit"
-            disabled={input.trim().length === 0 || !e2ee.ready}
-            title={!e2ee.ready ? "Setting up encryption…" : undefined}
+            disabled={input.trim().length === 0}
+            title={undefined}
             className="shrink-0 bg-accent hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed
                        text-white p-3 rounded-2xl transition-all shadow-lg"
             aria-label="Send message"
@@ -1134,7 +1195,6 @@ export default function ChatView({
               onClick={async () => {
                 await push.subscribe();
                 setShowPushPopup(false);
-                localStorage.setItem(`push_popup_dismissed_${slug}`, "1");
               }}
               disabled={push.loading}
               className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
@@ -1146,7 +1206,8 @@ export default function ChatView({
               type="button"
               onClick={() => {
                 setShowPushPopup(false);
-                localStorage.setItem(`push_popup_dismissed_${slug}`, "1");
+                // Snooze for 3 days — store current timestamp so the popup can re-appear later
+                localStorage.setItem(`push_popup_dismissed_${slug}`, String(Date.now()));
               }}
               className="text-xs text-muted hover:text-slate-300 transition"
             >

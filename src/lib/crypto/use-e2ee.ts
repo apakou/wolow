@@ -35,6 +35,11 @@ export function useE2EE({ slug, conversationId, isOwnerView }: UseE2EEOptions) {
   // Initialize keys on mount (and re-init when conversationId changes)
   useEffect(() => {
     if (!conversationId) return;
+    // Web Crypto API requires a secure context (HTTPS or localhost)
+    if (typeof crypto === "undefined" || !crypto.subtle) {
+      setState({ ready: false, encrypting: false, error: "E2EE unavailable (requires HTTPS)" });
+      return;
+    }
     if (lastConvRef.current === conversationId) return;
     lastConvRef.current = conversationId;
     roleRef.current = isOwnerView ? "owner" : "visitor";
@@ -99,18 +104,28 @@ export function useE2EE({ slug, conversationId, isOwnerView }: UseE2EEOptions) {
   // Poll for the other party's key when not yet ready
   useEffect(() => {
     if (state.ready || !conversationId) return;
+    const controller = new AbortController();
     const interval = setInterval(async () => {
+      if (controller.signal.aborted) return;
       try {
-        const keys = await fetchConversationKeys(slug, conversationId);
+        const keys = await fetchConversationKeys(slug, conversationId, controller.signal);
+        if (controller.signal.aborted) return;
         keysRef.current = keys;
         if (keys.ownerPublicKey && keys.visitorPublicKey) {
           setState((prev) => ({ ...prev, ready: true }));
         }
       } catch (err) {
-        console.error("[E2EE] Poll error:", err);
+        if (controller.signal.aborted) return;
+        // Suppress transient browser-cancelled network errors (navigation, tab hide, etc.)
+        if (err instanceof TypeError && /failed to fetch|load failed/i.test((err as TypeError).message)) return;
+        // Poll retries automatically — log at debug level only
+        console.debug("[E2EE] Poll: key fetch failed, will retry", err);
       }
     }, 5_000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      controller.abort();
+    };
   }, [state.ready, slug, conversationId]);
 
   // Refresh keys (called when we detect the other party has uploaded their key)

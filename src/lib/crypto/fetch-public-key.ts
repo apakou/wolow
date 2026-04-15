@@ -10,9 +10,11 @@ export interface ConversationKeys {
 export async function fetchConversationKeys(
   slug: string,
   conversationId: string,
+  signal?: AbortSignal,
 ): Promise<ConversationKeys> {
   const res = await fetch(
     `/api/rooms/${slug}/keys?conversation_id=${encodeURIComponent(conversationId)}`,
+    { signal },
   );
 
   if (!res.ok) {
