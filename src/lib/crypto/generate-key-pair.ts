@@ -18,6 +18,12 @@ const KEY_PARAMS: RsaHashedKeyGenParams = {
 const KEY_USAGES: KeyUsage[] = ["encrypt", "decrypt"];
 
 export async function generateKeyPair(): Promise<ExportedKeyPair> {
+  if (typeof crypto === "undefined" || !crypto.subtle) {
+    throw new Error(
+      "Web Crypto API is not available. E2EE requires a secure context (HTTPS or localhost)."
+    );
+  }
+
   const keyPair = await crypto.subtle.generateKey(
     KEY_PARAMS,
     true, // extractable — required to export as JWK

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getFunAnonymousEmoji } from "@/lib/fun-anonymous-name";
 import { relativeTime } from "@/lib/relative-time";
@@ -36,6 +36,8 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
   const [shareableLink, setShareableLink] = useState(`/${slug}`);
   const [copied, setCopied] = useState(false);
   const [canShare, setCanShare] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const shareMenuRef = useRef<HTMLDivElement>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [showPushPopup, setShowPushPopup] = useState(false);
 
@@ -65,6 +67,7 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
   // Pre-generate and upload the owner's public key as soon as they open the inbox.
   // This ensures visiting visitors can always find the owner's key and encrypt immediately.
   useEffect(() => {
+    if (typeof crypto === "undefined" || !crypto.subtle) return;
     const keyId = `room:${slug}`;
     (async () => {
       try {
@@ -177,21 +180,53 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // read-only input is still selectable as fallback
+      // Fallback for HTTP contexts or denied clipboard permission
+      try {
+        const el = document.createElement("input");
+        el.value = shareableLink;
+        el.style.position = "fixed";
+        el.style.opacity = "0";
+        document.body.appendChild(el);
+        el.focus();
+        el.select();
+        document.execCommand("copy");
+        document.body.removeChild(el);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        // last resort: just select the text in the input
+      }
     }
   }
 
   async function handleShare() {
-    try {
-      await navigator.share({
-        title: `${displayName} wants your anonymous messages`,
-        text: "Send me an anonymous message on Wolow",
-        url: shareableLink,
-      });
-    } catch {
-      // user cancelled
+    if (canShare) {
+      try {
+        await navigator.share({
+          title: `${displayName} wants your anonymous messages`,
+          text: "Send me an anonymous message on Wolow",
+          url: shareableLink,
+        });
+        return;
+      } catch {
+        // user cancelled or not supported — fall through to menu
+      }
     }
+    // Desktop: toggle the share menu
+    setShowShareMenu((prev) => !prev);
   }
+
+  // Close share menu on outside click
+  useEffect(() => {
+    if (!showShareMenu) return;
+    function handler(e: MouseEvent) {
+      if (shareMenuRef.current && !shareMenuRef.current.contains(e.target as Node)) {
+        setShowShareMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showShareMenu]);
 
   return (
     <div className="flex flex-col h-dvh bg-app-gradient">
@@ -211,22 +246,60 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
             className="flex-1 min-w-0 bg-surface/60 backdrop-blur border border-border rounded-xl px-3 py-2
                        text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-accent cursor-text"
           />
-          <button
-            onClick={handleCopy}
-            className="shrink-0 text-xs font-medium bg-surface-light/60 backdrop-blur hover:bg-surface-light text-slate-200
-                       px-3.5 py-2 rounded-xl transition-colors border border-border"
-          >
-            {copied ? "Copied!" : "Copy"}
-          </button>
-          {canShare && (
+          <div className="relative" ref={shareMenuRef}>
             <button
               onClick={handleShare}
               className="shrink-0 text-xs font-medium bg-accent text-white
-                         px-3.5 py-2 rounded-xl transition-all hover:opacity-90"
+                         px-3.5 py-2 rounded-xl transition-all hover:opacity-90 flex items-center gap-1.5"
             >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                <path d="M13 4.5a2.5 2.5 0 1 1 .702 1.737L6.97 9.604a2.518 2.518 0 0 1 0 .792l6.733 3.367a2.5 2.5 0 1 1-.671 1.341l-6.733-3.367a2.5 2.5 0 1 1 0-3.474l6.733-3.366A2.52 2.52 0 0 1 13 4.5Z" />
+              </svg>
               Share
             </button>
-          )}
+            {showShareMenu && (
+              <div className="absolute right-0 top-full mt-2 z-50 w-48 rounded-2xl border border-border bg-surface/95 backdrop-blur shadow-2xl overflow-hidden">
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(`${displayName} wants your anonymous messages — ${shareableLink}`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setShowShareMenu(false)}
+                  className="flex items-center gap-3 px-4 py-3 text-sm text-slate-200 hover:bg-surface-light transition-colors"
+                >
+                  <span className="text-base">💬</span> WhatsApp
+                </a>
+                <a
+                  href={`https://t.me/share/url?url=${encodeURIComponent(shareableLink)}&text=${encodeURIComponent(`${displayName} wants your anonymous messages`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setShowShareMenu(false)}
+                  className="flex items-center gap-3 px-4 py-3 text-sm text-slate-200 hover:bg-surface-light transition-colors"
+                >
+                  <span className="text-base">✈️</span> Telegram
+                </a>
+                <a
+                  href={`https://x.com/intent/post?text=${encodeURIComponent(`${displayName} wants your anonymous messages — ${shareableLink}`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setShowShareMenu(false)}
+                  className="flex items-center gap-3 px-4 py-3 text-sm text-slate-200 hover:bg-surface-light transition-colors"
+                >
+                  <span className="text-base">𝕏</span> X (Twitter)
+                </a>
+                <button
+                  type="button"
+                  onClick={() => { handleCopy(); setShowShareMenu(false); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-200 hover:bg-surface-light transition-colors border-t border-border"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-muted">
+                    <path d="M7 3.5A1.5 1.5 0 0 1 8.5 2h3.879a1.5 1.5 0 0 1 1.06.44l3.122 3.12A1.5 1.5 0 0 1 17 6.622V12.5a1.5 1.5 0 0 1-1.5 1.5h-1v-3.379a3 3 0 0 0-.879-2.121L10.5 5.379A3 3 0 0 0 8.379 4.5H7v-1Z" />
+                    <path d="M4.5 6A1.5 1.5 0 0 0 3 7.5v9A1.5 1.5 0 0 0 4.5 18h7a1.5 1.5 0 0 0 1.5-1.5v-5.879a1.5 1.5 0 0 0-.44-1.06L9.44 6.439A1.5 1.5 0 0 0 8.378 6H4.5Z" />
+                  </svg>
+                  Copy link
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Filter pills */}
