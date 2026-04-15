@@ -19,7 +19,7 @@ const securityHeaders = [
         : "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",                // required by Tailwind
       isDev
-        ? "connect-src 'self' http://127.0.0.1:54321 ws://127.0.0.1:54321 https://*.supabase.co wss://*.supabase.co"
+        ? "connect-src 'self' http://127.0.0.1:54321 ws://127.0.0.1:54321 https://127.0.0.1:54321 wss://127.0.0.1:54321 https://*.supabase.co wss://*.supabase.co https:"  
         : "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
       "img-src 'self' data:",
       "font-src 'self'",
@@ -30,7 +30,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["172.23.205.209"],
+  allowedDevOrigins: ['192.168.100.19'],
   async headers() {
     return [
       {
