@@ -15,7 +15,7 @@ async function getRoom(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("rooms")
-    .select("id, owner_token")
+    .select("id, owner_token, user_id")
     .eq("slug", slug)
     .single();
   return data ?? null;
@@ -90,32 +90,34 @@ async function buildConversationResponse(
 /**
  * POST /api/rooms/[slug]/conversations
  *
- * Called by the anonymous sender on page load.
- * Upserts a conversation for this (room, sender) pair and
- * sets the sender cookie if new.
+ * Called by the authenticated visitor on page load.
+ * Upserts a conversation for this (room, sender) pair.
+ * sender_user_id is NEVER exposed to the room owner.
  */
 export async function POST(_req: Request, { params }: Params) {
   const { slug } = await params;
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const room = await getRoom(slug);
   if (!room) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
-  const cookieStore = await cookies();
-  let senderToken = cookieStore.get(`sender_${slug}`)?.value;
-  const isNewSender = !senderToken;
-
-  if (!senderToken) {
-    senderToken = crypto.randomUUID();
+  // Block the room owner from messaging their own room
+  if (room.user_id === user.id) {
+    return NextResponse.json({ error: "You cannot message your own room" }, { status: 403 });
   }
-
-  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from("conversations")
     .upsert(
-      { room_id: room.id, sender_token: senderToken },
-      { onConflict: "room_id,sender_token" }
+      { room_id: room.id, sender_user_id: user.id },
+      { onConflict: "room_id,sender_user_id" }
     )
     .select("id")
     .single();
@@ -125,26 +127,14 @@ export async function POST(_req: Request, { params }: Params) {
     return NextResponse.json({ error: "Failed to create conversation" }, { status: 500 });
   }
 
-  const res = NextResponse.json({ conversation_id: data.id });
-
-  if (isNewSender) {
-    res.cookies.set(`sender_${slug}`, senderToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 365,
-    });
-  }
-
-  return res;
+  return NextResponse.json({ conversation_id: data.id });
 }
 
 /**
  * GET /api/rooms/[slug]/conversations
  *
  * Called by the room owner to list all conversations with latest message.
- * Requires the owner cookie.
+ * Requires the authenticated user to be the room owner.
  */
 export async function GET(_req: Request, { params }: Params) {
   const { slug } = await params;
@@ -153,14 +143,12 @@ export async function GET(_req: Request, { params }: Params) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
-  const cookieStore = await cookies();
-  const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-  if (!ownerToken || !safeCompare(ownerToken, room.owner_token)) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user || user.id !== room.user_id) {
     logSecurityEvent("auth_failure", { endpoint: "GET /conversations", slug });
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
-
-  const supabase = await createClient();
 
   // Try with owner_last_read_at first; fall back if column doesn't exist yet
   const { data: conversations, error } = await supabase
@@ -208,9 +196,9 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
-  const cookieStore = await cookies();
-  const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-  if (!ownerToken || !safeCompare(ownerToken, room.owner_token)) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user || user.id !== room.user_id) {
     logSecurityEvent("auth_failure", { endpoint: "PATCH /conversations", slug });
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
@@ -231,7 +219,6 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json({ error: "conversation_id is required" }, { status: 422 });
   }
 
-  const supabase = await createClient();
   const { error } = await supabase
     .from("conversations")
     .update({ owner_last_read_at: new Date().toISOString() })

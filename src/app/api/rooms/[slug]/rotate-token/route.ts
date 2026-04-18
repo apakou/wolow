@@ -1,8 +1,6 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logSecurityEvent } from "@/lib/security-logger";
-import { safeCompare } from "@/lib/safe-compare";
 import { logError } from "@/lib/error-logger";
 
 type Params = { params: Promise<{ slug: string }> };
@@ -20,9 +18,10 @@ export async function POST(_req: Request, { params }: Params) {
   const { slug } = await params;
 
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
   const { data: room } = await supabase
     .from("rooms")
-    .select("id, owner_token")
+    .select("id, owner_token, user_id")
     .eq("slug", slug)
     .single();
 
@@ -30,10 +29,7 @@ export async function POST(_req: Request, { params }: Params) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
-  const cookieStore = await cookies();
-  const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-
-  if (!ownerToken || !safeCompare(ownerToken, room.owner_token)) {
+  if (!user || user.id !== room.user_id) {
     logSecurityEvent("auth_failure", { endpoint: "POST /rotate-token", slug });
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
@@ -50,13 +46,5 @@ export async function POST(_req: Request, { params }: Params) {
     return NextResponse.json({ error: "Failed to rotate token" }, { status: 500 });
   }
 
-  const res = NextResponse.json({ ok: true });
-  res.cookies.set(`owner_${slug}`, newToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 365,
-  });
-  return res;
+  return NextResponse.json({ ok: true });
 }

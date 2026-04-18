@@ -81,4 +81,6 @@ export const LIMITS = {
   createRoom: { limit: 5, windowMs: 60 * 60 * 1000 },
   /** 10 messages per IP per minute */
   sendMessage: { limit: 10, windowMs: 60 * 1000 },
+  /** 5 owner key rotations per user per hour (force_rotate path only) */
+  rotateKey: { limit: 5, windowMs: 60 * 60 * 1000 },
 } as const;

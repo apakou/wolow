@@ -11,7 +11,7 @@ async function getRoom(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("rooms")
-    .select("id, owner_token")
+    .select("id, owner_token, user_id")
     .eq("slug", slug)
     .single();
   return data ?? null;
@@ -70,16 +70,18 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: "Invalid endpoint URL" }, { status: 422 });
   }
 
-  // Determine role from cookies
-  const cookieStore = await cookies();
-  const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-  const senderToken = cookieStore.get(`sender_${slug}`)?.value;
+  // Determine role via Supabase auth
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   let role: "owner" | "visitor";
 
-  if (ownerToken && safeCompare(ownerToken, room.owner_token)) {
+  if (user.id === room.user_id) {
     role = "owner";
-  } else if (senderToken) {
+  } else {
     role = "visitor";
     if (!conversationId) {
       return NextResponse.json(
@@ -87,11 +89,7 @@ export async function POST(req: Request, { params }: Params) {
         { status: 422 }
       );
     }
-  } else {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  const supabase = await createClient();
 
   // Upsert — if this browser endpoint already exists, update the keys/role/room
   const { error } = await supabase.from("push_subscriptions").upsert(

@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import ChatRoom from "./components/ChatRoom";
@@ -9,7 +9,7 @@ async function getRoom(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("rooms")
-    .select("id, slug, display_name")
+    .select("id, slug, display_name, user_id")
     .eq("slug", slug)
     .single();
   return data;
@@ -44,8 +44,21 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function SlugPage({ params }: Props) {
   const { slug } = await params;
+
+  // Require authentication — visitors must be signed in
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    redirect(`/?next=/${slug}`);
+  }
+
   const room = await getRoom(slug);
   if (!room) notFound();
+
+  // If the signed-in user owns this room, send them to their inbox
+  if (room.user_id === user.id) {
+    redirect(`/${slug}/inbox`);
+  }
 
   return <ChatRoom roomId={room.id} slug={room.slug} displayName={room.display_name} />;
 }

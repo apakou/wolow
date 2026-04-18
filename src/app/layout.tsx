@@ -57,9 +57,14 @@ export default function RootLayout({
         <Script id="register-sw" strategy="afterInteractive">
           {`
             if ('serviceWorker' in navigator) {
-              window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js');
-              });
+              var hostname = window.location.hostname;
+              var isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+              var isProd = ${process.env.NODE_ENV === 'production'};
+              if (isProd || isLocalhost) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').catch(function() {});
+                });
+              }
             }
           `}
         </Script>

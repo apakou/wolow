@@ -1,4 +1,3 @@
-import { cookies } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
@@ -12,23 +11,22 @@ export const metadata: Metadata = { title: "Conversation" };
 export default async function ConversationPage({ params }: Props) {
   const { slug, conversationId } = await params;
 
-  // Verify owner
-  const cookieStore = await cookies();
-  const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-  if (!ownerToken) {
-    redirect(`/${slug}`);
-  }
-
+  // Verify owner via Supabase auth
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect(`/?next=/${slug}/inbox/${conversationId}`);
+  }
 
   // Load room
   const { data: room } = await supabase
     .from("rooms")
-    .select("id, slug, display_name, owner_token")
+    .select("id, slug, display_name, user_id")
     .eq("slug", slug)
     .single();
 
-  if (!room || room.owner_token !== ownerToken) {
+  if (!room || room.user_id !== user.id) {
     redirect(`/${slug}`);
   }
 

@@ -10,7 +10,7 @@ async function getRoom(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("rooms")
-    .select("id, owner_token, owner_public_key")
+    .select("id, owner_token, owner_public_key, user_id")
     .eq("slug", slug)
     .single();
   return data ?? null;
@@ -63,9 +63,9 @@ export async function PUT(req: Request, { params }: Params) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
   }
 
-  const cookieStore = await cookies();
-  const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-  if (!ownerToken || !safeCompare(ownerToken, room.owner_token)) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user || user.id !== room.user_id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
@@ -85,10 +85,9 @@ export async function PUT(req: Request, { params }: Params) {
     return NextResponse.json({ error: "public_key is required" }, { status: 422 });
   }
 
-  const supabase = await createClient();
   const { data: success, error } = await supabase.rpc("set_owner_public_key", {
     p_room_id: room.id,
-    p_owner_token: ownerToken,
+    p_owner_token: room.owner_token,
     p_public_key: publicKey,
   });
 

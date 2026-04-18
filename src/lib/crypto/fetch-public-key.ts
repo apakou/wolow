@@ -7,6 +7,15 @@ export interface ConversationKeys {
   visitorPublicKey: JsonWebKey | null;
 }
 
+export class FetchKeysError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "FetchKeysError";
+    this.status = status;
+  }
+}
+
 export async function fetchConversationKeys(
   slug: string,
   conversationId: string,
@@ -18,7 +27,7 @@ export async function fetchConversationKeys(
   );
 
   if (!res.ok) {
-    throw new Error("Failed to fetch public keys");
+    throw new FetchKeysError(res.status, `Failed to fetch public keys (HTTP ${res.status})`);
   }
 
   const data = await res.json();

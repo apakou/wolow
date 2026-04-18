@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import ChatView from "@/components/ChatView";
+import AnonymityExplainer from "@/components/AnonymityExplainer";
 import { reportError } from "@/lib/report-error";
 
 type Props = {
@@ -60,6 +61,9 @@ export default function ChatRoom({ roomId, slug, displayName }: Props) {
       displayName={displayName}
       conversationId={conversationId}
       inputPlaceholder={`Send ${displayName} an anonymous message…`}
+      aboveComposer={
+        <AnonymityExplainer conversationId={conversationId} recipientName={displayName} />
+      }
     />
   );
 }

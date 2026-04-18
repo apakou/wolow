@@ -329,6 +329,12 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
           >
             Unread {unreadTotal > 0 && unreadTotal}
           </button>
+          <a
+            href="/sent"
+            className="text-xs font-medium px-4 py-1.5 rounded-full bg-surface-light/50 text-slate-400 hover:text-slate-200 transition-all"
+          >
+            Sent
+          </a>
         </div>
       </header>
 
