@@ -12,6 +12,8 @@ import { relativeTime } from "@/lib/relative-time";
 import { useE2EE } from "@/lib/crypto/use-e2ee";
 import { usePushNotifications } from "@/lib/push/use-push-notifications";
 import { reportError } from "@/lib/report-error";
+import { isDecryptError, type DecryptErrorReason } from "@/lib/crypto/decrypt-errors";
+import DecryptErrorBubble from "@/components/DecryptErrorBubble";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -29,6 +31,8 @@ export type Message = {
   failed?: boolean;
   /** Decrypted plaintext (set client-side after decryption) */
   decryptedContent?: string;
+  /** Set when decryption failed — drives DecryptErrorBubble rendering */
+  decryptError?: { reason: DecryptErrorReason; message: string };
   /** True when the message was received via broadcast (before DB confirms) */
   _fromBroadcast?: boolean;
 };
@@ -58,6 +62,8 @@ type Props = {
   isOwnerView?: boolean;
   /** Extra content rendered inside the header (e.g. share bar for owner) */
   header?: HeaderSlot;
+  /** Extra content rendered just above the composer (e.g. anonymity explainer) */
+  aboveComposer?: React.ReactNode;
   inputPlaceholder?: string;
 };
 
@@ -249,6 +255,7 @@ function Bubble({
   message,
   repliedMessage,
   isMine,
+  isOwnerView,
   onToggleReaction,
   onSwipeReply,
   isReactionBusy,
@@ -256,6 +263,7 @@ function Bubble({
   message: Message;
   repliedMessage?: ReplyTarget | null;
   isMine: boolean;
+  isOwnerView: boolean;
   onToggleReaction: (messageId: string, emoji: string, hasReacted: boolean) => void;
   onSwipeReply: (message: ReplyTarget) => void;
   isReactionBusy: (messageId: string, emoji: string) => boolean;
@@ -325,6 +333,7 @@ function Bubble({
     if (mostlyHorizontal && swipeTowardReply) {
       swipedForReplyRef.current = true;
       setPickerOpen(false);
+      if (message.decryptError) return;
       onSwipeReply({ id: message.id, content: message.decryptedContent ?? message.content, is_owner: message.is_owner });
     }
   };
@@ -349,40 +358,58 @@ function Bubble({
       ref={bubbleRef}
       className={`relative flex flex-col gap-0.5 ${isMine ? "items-end" : "items-start"}`}
     >
-      <div
-        className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words transition-opacity
-          ${isMine
-            ? "bg-accent text-white rounded-br-md"
-            : "bg-surface-light text-slate-100 rounded-bl-md border border-border"}
-          ${message.pending ? "opacity-50" : "opacity-100"}
-          ${message.failed ? "!bg-red-900/60 text-red-300" : ""}
-        `}
-        style={{ touchAction: "pan-y" }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerEnd}
-        onPointerCancel={handlePointerEnd}
-        onPointerLeave={handlePointerEnd}
-        onClick={handleBubbleClick}
-      >
-        {message.reply_to_message_id && repliedMessage && (
-          <div className="mb-2 px-2.5 py-1.5 rounded-lg bg-black/20 border border-white/15">
-            <p className="text-[10px] uppercase tracking-wide text-white/70 mb-0.5">
-              Replying to
-            </p>
-            <p className="text-xs text-white/85 break-words">
-              {repliedMessage.content}
-            </p>
-          </div>
-        )}
-        {message.decryptedContent ?? message.content}
-        {message.encrypted_content && !message.failed && (
-          <span className="inline-block ml-1 text-[10px] opacity-50" title="End-to-end encrypted">🔒</span>
-        )}
-        {message.failed && (
-          <span className="block text-xs text-red-400 mt-1">Failed to send</span>
-        )}
-      </div>
+      {message.decryptError ? (
+        <div
+          style={{ touchAction: "pan-y" }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerEnd}
+          onPointerCancel={handlePointerEnd}
+          onPointerLeave={handlePointerEnd}
+          onClick={handleBubbleClick}
+        >
+          <DecryptErrorBubble
+            reason={message.decryptError.reason}
+            isOwnerView={isOwnerView}
+            isMine={isMine}
+          />
+        </div>
+      ) : (
+        <div
+          className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words transition-opacity
+            ${isMine
+              ? "bg-accent text-white rounded-br-md"
+              : "bg-surface-light text-slate-100 rounded-bl-md border border-border"}
+            ${message.pending ? "opacity-50" : "opacity-100"}
+            ${message.failed ? "!bg-red-900/60 text-red-300" : ""}
+          `}
+          style={{ touchAction: "pan-y" }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerEnd}
+          onPointerCancel={handlePointerEnd}
+          onPointerLeave={handlePointerEnd}
+          onClick={handleBubbleClick}
+        >
+          {message.reply_to_message_id && repliedMessage && (
+            <div className="mb-2 px-2.5 py-1.5 rounded-lg bg-black/20 border border-white/15">
+              <p className="text-[10px] uppercase tracking-wide text-white/70 mb-0.5">
+                Replying to
+              </p>
+              <p className="text-xs text-white/85 break-words">
+                {repliedMessage.content}
+              </p>
+            </div>
+          )}
+          {message.decryptedContent ?? message.content}
+          {message.encrypted_content && !message.failed && (
+            <span className="inline-block ml-1 text-[10px] opacity-50" title="End-to-end encrypted">🔒</span>
+          )}
+          {message.failed && (
+            <span className="block text-xs text-red-400 mt-1">Failed to send</span>
+          )}
+        </div>
+      )}
       {!message.pending && (
         <div className="flex flex-wrap items-center gap-1.5 px-1">
           {reactions.map((reaction) => (
@@ -449,6 +476,7 @@ export default function ChatView({
   conversationId,
   isOwnerView = false,
   header,
+  aboveComposer,
   inputPlaceholder,
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -484,7 +512,7 @@ export default function ChatView({
       loaded &&
       push.supported &&
       !push.isSubscribed &&
-      push.permission !== "denied" &&
+      push.permission === "default" &&
       !isDismissed
     ) {
       const timer = setTimeout(() => setShowPushPopup(true), 1500);
@@ -497,15 +525,77 @@ export default function ChatView({
     if (e2ee.ready) setError(null);
   }, [e2ee.ready]);
 
+  // Re-decrypt messages that failed because the private key wasn't loaded yet.
+  // This handles the race where messages are fetched before the key is available
+  // in IndexedDB (e.g. first-time key generation, slow IndexedDB read).
+  useEffect(() => {
+    if (!e2ee.keyLoaded || !loaded) return;
+    let cancelled = false;
+
+    (async () => {
+      // Grab current messages via functional update pattern to avoid stale closure
+      let messagesToRetry: Message[] = [];
+      setMessages((prev) => {
+        messagesToRetry = prev.filter(
+          (m) => m.encrypted_content && m.decryptError?.reason === "no_key"
+        );
+        return prev; // Don't change state yet
+      });
+
+      if (messagesToRetry.length === 0) return;
+
+      const retried = await Promise.all(
+        messagesToRetry.map(async (msg) => {
+          try {
+            const plain = await e2ee.decrypt(msg.encrypted_content!);
+            return { id: msg.id, decryptedContent: plain };
+          } catch {
+            return null; // Still can't decrypt — leave as-is
+          }
+        })
+      );
+
+      if (cancelled) return;
+
+      const updates = new Map(
+        retried
+          .filter((r): r is { id: string; decryptedContent: string } => r !== null)
+          .map((r) => [r.id, r.decryptedContent])
+      );
+
+      if (updates.size === 0) return;
+
+      setMessages((prev) =>
+        prev.map((m) => {
+          const plain = updates.get(m.id);
+          return plain !== undefined
+            ? { ...m, decryptedContent: plain, decryptError: undefined }
+            : m;
+        })
+      );
+    })();
+
+    return () => { cancelled = true; };
+  }, [e2ee.keyLoaded, loaded, e2ee.decrypt]);
+
   // Decrypt a single message in-place (returns same ref if unencrypted)
   const decryptMessageContent = useCallback(
     async (msg: Message): Promise<Message> => {
       if (!msg.encrypted_content || msg.decryptedContent) return msg;
       try {
         const plain = await e2ee.decrypt(msg.encrypted_content);
-        return { ...msg, decryptedContent: plain };
-      } catch {
-        return { ...msg, decryptedContent: "\u{1F512} Unable to decrypt" };
+        return { ...msg, decryptedContent: plain, decryptError: undefined };
+      } catch (err) {
+        if (isDecryptError(err)) {
+          return { ...msg, decryptError: { reason: err.reason, message: err.message } };
+        }
+        return {
+          ...msg,
+          decryptError: {
+            reason: "unknown",
+            message: err instanceof Error ? err.message : "Unknown decryption error",
+          },
+        };
       }
     },
     [e2ee.decrypt],
@@ -527,9 +617,12 @@ export default function ChatView({
   const messageById = useMemo(() => {
     const map = new Map<string, ReplyTarget>();
     for (const message of messages) {
+      const previewContent = message.decryptError
+        ? "[encrypted message]"
+        : message.decryptedContent ?? message.content;
       map.set(message.id, {
         id: message.id,
-        content: message.decryptedContent ?? message.content,
+        content: previewContent,
         is_owner: message.is_owner,
       });
     }
@@ -743,16 +836,40 @@ export default function ChatView({
             setMessages((prev) => {
               // Deduplicate by ID first (POST response likely already replaced optimistic)
               if (prev.some((m) => m.id === decrypted.id)) return prev;
-              // Replace matching optimistic OR broadcast-placeholder message
-              const placeholderIdx = prev.findIndex(
-                (m) =>
-                  (m.pending || m._fromBroadcast) &&
-                  (m.decryptedContent ?? m.content) === (decrypted.decryptedContent ?? decrypted.content) &&
-                  m.is_owner === decrypted.is_owner
-              );
+              // Replace matching optimistic OR broadcast-placeholder message.
+              // Match by encrypted_content (exact) when available — it's deterministic
+              // across broadcast and postgres_changes and unaffected by decrypt failures.
+              // Fall back to plaintext content match for non-encrypted messages.
+              const placeholderIdx = prev.findIndex((m) => {
+                if (!(m.pending || m._fromBroadcast)) return false;
+                if (m.is_owner !== decrypted.is_owner) return false;
+                if (decrypted.encrypted_content && m.encrypted_content) {
+                  return m.encrypted_content === decrypted.encrypted_content;
+                }
+                return (m.decryptedContent ?? m.content) === (decrypted.decryptedContent ?? decrypted.content);
+              });
               if (placeholderIdx !== -1) {
                 const next = [...prev];
-                next[placeholderIdx] = decrypted;
+                const placeholder = prev[placeholderIdx];
+                // Prefer the placeholder's already-decrypted plaintext if this
+                // handler's decrypt failed — prevents a successfully-displayed
+                // message from flipping to an error bubble.
+                const placeholderDecrypted = placeholder.decryptedContent;
+                const thisDecryptFailed =
+                  !!decrypted.encrypted_content && !!decrypted.decryptError;
+                const bestDecrypted =
+                  thisDecryptFailed && placeholderDecrypted
+                    ? placeholderDecrypted
+                    : decrypted.decryptedContent;
+                const bestError =
+                  thisDecryptFailed && placeholderDecrypted
+                    ? undefined
+                    : decrypted.decryptError;
+                next[placeholderIdx] = {
+                  ...decrypted,
+                  decryptedContent: bestDecrypted,
+                  decryptError: bestError,
+                };
                 return next;
               }
               return [...prev, decrypted];
@@ -835,8 +952,23 @@ export default function ChatView({
 
     // Guard: crypto is available but E2EE not ready yet
     const cryptoAvailable = typeof crypto !== "undefined" && !!crypto.subtle;
-    if (cryptoAvailable && !e2ee.ready) {
-      setError("Encryption is still setting up. Please wait a moment and try again.");
+    // Legacy conversation: my local key works, but the other party never
+    // uploaded a public key (pre-E2EE conversation). Fall through to plaintext
+    // instead of blocking the owner from ever replying.
+    const otherPartyHasKey = isOwnerView ? e2ee.visitorKeyOnServer : e2ee.ownerKeyOnServer;
+    const isLegacyConversation = cryptoAvailable && e2ee.keyLoaded && !otherPartyHasKey;
+
+    if (cryptoAvailable && !e2ee.ready && !isLegacyConversation) {
+      if (
+        e2ee.error === "owner_key_missing_restore_required" ||
+        e2ee.error === "owner_key_conflict_restore_required"
+      ) {
+        setError(
+          "Your encryption key isn't on this device. Restore it from your .wolow-key backup in Settings to read and send messages.",
+        );
+      } else {
+        setError("Encryption is still setting up. Please wait a moment and try again.");
+      }
       return;
     }
 
@@ -1084,6 +1216,7 @@ export default function ChatView({
                 message={msg}
                 repliedMessage={msg.reply_to_message_id ? messageById.get(msg.reply_to_message_id) : null}
                 isMine={isOwnerView ? msg.is_owner : !msg.is_owner}
+                isOwnerView={isOwnerView}
                 onToggleReaction={handleToggleReaction}
                 onSwipeReply={handleSwipeReply}
                 isReactionBusy={isReactionBusy}
@@ -1111,6 +1244,7 @@ export default function ChatView({
         onSubmit={handleSubmit}
         className="shrink-0 border-t border-border bg-surface/80 backdrop-blur-lg px-4 py-3 flex flex-col gap-2"
       >
+        {aboveComposer}
         {error && <p className="text-xs text-red-400">{error}</p>}
         {replyTo && (
           <div className="flex items-start justify-between gap-2 rounded-xl border border-border bg-surface-light/70 px-3 py-2">
@@ -1164,7 +1298,16 @@ export default function ChatView({
         </div>
         <div className="flex justify-between items-center">
           {!e2ee.ready ? (
-            <p className="text-[11px] text-muted animate-pulse">Setting up encryption…</p>
+            e2ee.error === "owner_key_missing_restore_required" ||
+            e2ee.error === "owner_key_conflict_restore_required" ? (
+              <a href="/settings" className="text-[11px] text-accent underline">
+                Restore your key to send messages
+              </a>
+            ) : e2ee.keyLoaded && !(isOwnerView ? e2ee.visitorKeyOnServer : e2ee.ownerKeyOnServer) ? (
+              <p className="text-[11px] text-muted">Unencrypted conversation</p>
+            ) : (
+              <p className="text-[11px] text-muted animate-pulse">Setting up encryption…</p>
+            )
           ) : (
             <span />
           )}

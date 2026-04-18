@@ -1,7 +1,5 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { safeCompare } from "@/lib/safe-compare";
 import { logError } from "@/lib/error-logger";
 
 type Params = { params: Promise<{ slug: string }> };
@@ -10,7 +8,7 @@ async function getRoom(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("rooms")
-    .select("id, owner_token")
+    .select("id")
     .eq("slug", slug)
     .single();
   return data ?? null;
@@ -19,7 +17,7 @@ async function getRoom(slug: string) {
 /**
  * PUT /api/rooms/[slug]/conversations/keys
  *
- * Sets the visitor's public key on a conversation. Requires the sender cookie.
+ * Sets the visitor's public key on a conversation. Requires the authenticated sender.
  * Only sets the key if it hasn't been set yet (cannot overwrite).
  */
 export async function PUT(req: Request, { params }: Params) {
@@ -27,6 +25,12 @@ export async function PUT(req: Request, { params }: Params) {
   const room = await getRoom(slug);
   if (!room) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
+  }
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   let body: unknown;
@@ -50,16 +54,10 @@ export async function PUT(req: Request, { params }: Params) {
     return NextResponse.json({ error: "public_key is required" }, { status: 422 });
   }
 
-  // Verify sender owns this conversation via cookie
-  const cookieStore = await cookies();
-  const senderToken = cookieStore.get(`sender_${slug}`)?.value;
-
-  const supabase = await createClient();
-
   // Fetch the conversation and verify ownership
   const { data: conv } = await supabase
     .from("conversations")
-    .select("id, sender_token, visitor_public_key")
+    .select("id, sender_user_id, visitor_public_key")
     .eq("id", conversationId)
     .eq("room_id", room.id)
     .single();
@@ -69,9 +67,7 @@ export async function PUT(req: Request, { params }: Params) {
   }
 
   // Only the conversation's sender can set the visitor public key
-  const isSender = safeCompare(senderToken, conv.sender_token);
-
-  if (!isSender) {
+  if (user.id !== conv.sender_user_id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 

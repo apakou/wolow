@@ -68,6 +68,18 @@ export function usePushNotifications(
       .catch(() => {});
   }, []);
 
+  // If the user has already granted notification permission but we're not
+  // subscribed (e.g. DB row was wiped, new device, or PWA reinstall), silently
+  // re-subscribe in the background. This avoids re-prompting the user via the
+  // "Enable notifications" modal when they already said yes.
+  useEffect(() => {
+    if (!supported || isSubscribed || loading) return;
+    if (permission !== "granted") return;
+    void subscribe();
+    // subscribe is stable enough — guarded by `loading` flag inside.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supported, isSubscribed, permission]);
+
   const subscribe = useCallback(async () => {
     if (!supported || loading) return;
     setLoading(true);

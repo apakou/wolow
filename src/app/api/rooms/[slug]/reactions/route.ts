@@ -1,8 +1,6 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logSecurityEvent } from "@/lib/security-logger";
-import { safeCompare } from "@/lib/safe-compare";
 import { logError } from "@/lib/error-logger";
 
 type Params = { params: Promise<{ slug: string }> };
@@ -11,7 +9,7 @@ async function getRoom(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("rooms")
-    .select("id, owner_token")
+    .select("id, owner_token, user_id")
     .eq("slug", slug)
     .single();
   return data ?? null;
@@ -31,17 +29,13 @@ function validateEmoji(raw: string): string | null {
   return raw;
 }
 
-async function resolveActor(slug: string, ownerTokenFromRoom: string) {
-  const cookieStore = await cookies();
-  const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
-  const senderToken = cookieStore.get(`sender_${slug}`)?.value;
-  const isOwner = safeCompare(ownerToken, ownerTokenFromRoom);
-
-  // Any owner can react; sender must have the sender cookie for this room.
-  if (!isOwner && !senderToken) {
+async function resolveActor(roomUserId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
     return { ok: false as const };
   }
-
+  const isOwner = user.id === roomUserId;
   return { ok: true as const, isOwner };
 }
 
@@ -77,7 +71,7 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: "message_id and emoji are required" }, { status: 422 });
   }
 
-  const actor = await resolveActor(slug, room.owner_token);
+  const actor = await resolveActor(room.user_id);
   if (!actor.ok) {
     logSecurityEvent("unauthorized_access", { endpoint: "POST /reactions", slug });
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
@@ -150,7 +144,7 @@ export async function DELETE(req: Request, { params }: Params) {
     return NextResponse.json({ error: "message_id and emoji are required" }, { status: 422 });
   }
 
-  const actor = await resolveActor(slug, room.owner_token);
+  const actor = await resolveActor(room.user_id);
   if (!actor.ok) {
     logSecurityEvent("unauthorized_access", { endpoint: "DELETE /reactions", slug });
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });

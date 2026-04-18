@@ -2,14 +2,17 @@
 
 import { createClient } from "@/lib/supabase/client";
 
-export default function SignInWithGoogle() {
+export default function SignInWithGoogle({ next }: { next?: string }) {
   async function handleSignIn() {
     const supabase = createClient();
+    const callbackUrl = next
+      ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`
+      : `${window.location.origin}/auth/callback`;
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         // Use the current origin so local network testing works correctly
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: callbackUrl,
       },
     });
   }

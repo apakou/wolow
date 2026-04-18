@@ -27,7 +27,7 @@ async function getRoom(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("rooms")
-    .select("id, owner_token")
+    .select("id, owner_token, user_id")
     .eq("slug", slug)
     .single();
   return data ?? null;
@@ -49,6 +49,13 @@ export async function GET(req: Request, { params }: Params) {
   const viewerIsOwner = safeCompare(ownerToken, room.owner_token);
 
   const supabase = await createClient();
+  // Also check auth-based ownership (for users signed in without the legacy cookie)
+  let isOwnerByAuth = false;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user && user.id === room.user_id) {
+    isOwnerByAuth = true;
+  }
+  const effectiveIsOwner = viewerIsOwner || isOwnerByAuth;
   let query = supabase
     .from("messages")
     .select("id, content, is_owner, created_at, reply_to_message_id, encrypted_content")
@@ -109,7 +116,7 @@ export async function GET(req: Request, { params }: Params) {
 
     const existing = perMessage.get(reaction.emoji) ?? { count: 0, reactedByMe: false };
     existing.count += 1;
-    if (reaction.is_owner === viewerIsOwner) {
+    if (reaction.is_owner === effectiveIsOwner) {
       existing.reactedByMe = true;
     }
     perMessage.set(reaction.emoji, existing);
@@ -132,6 +139,11 @@ export async function GET(req: Request, { params }: Params) {
 
 export async function POST(req: Request, { params }: Params) {
   const { slug } = await params;
+
+  const room = await getRoom(slug);
+  if (!room) {
+    return NextResponse.json({ error: "Room not found" }, { status: 404 });
+  }
 
   // Hybrid rate limiting:
   // 1) fast in-memory check on every request (low latency)
@@ -195,9 +207,15 @@ export async function POST(req: Request, { params }: Params) {
   // For E2EE messages, store a placeholder so the DB content column is never null.
   const storedContent = hasEncrypted ? "\u{1F512}" : content;
 
-  // Determine if the sender is the room owner via httpOnly cookie
+  // Determine if the sender is the room owner via Supabase auth (preferred)
+  // Fall back to legacy httpOnly cookie for backwards compatibility
   const cookieStore = await cookies();
-  const ownerToken = cookieStore.get(`owner_${slug}`)?.value;
+  const ownerCookie = cookieStore.get(`owner_${slug}`)?.value;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const isOwnerByAuth = !!user && user.id === room.user_id;
+  const isOwnerByCookie = safeCompare(ownerCookie, room.owner_token);
+  const ownerTokenForRpc = (isOwnerByAuth || isOwnerByCookie) ? room.owner_token : null;
 
   const conversationId =
     typeof (body as Record<string, unknown>).conversation_id === "string"
@@ -223,14 +241,12 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: "conversation_id is required" }, { status: 422 });
   }
 
-  const supabase = await createClient();
-
   const { data, error } = await supabase.rpc("send_message_secure", {
     p_slug: slug,
     p_conversation_id: conversationId,
     p_content: storedContent,
     p_reply_to_message_id: replyToMessageId,
-    p_owner_token: ownerToken ?? null,
+    p_owner_token: ownerTokenForRpc,
     p_encrypted_content: encryptedContent,
     p_sender_public_key_id: senderPublicKeyId,
   });

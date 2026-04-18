@@ -1,17 +1,32 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import SignInWithGoogle from "./components/SignInWithGoogle";
-import CreateRoomForm from "./components/CreateRoomForm";
 
-export default async function Home() {
+type Props = { searchParams: Promise<{ next?: string; auth_error?: string }> };
+
+export default async function Home({ searchParams }: Props) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    return <SignInWithGoogle />;
+  if (user) {
+    const { data: room, error: roomError } = await supabase
+      .from("rooms")
+      .select("slug")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (roomError) {
+      console.error("[home] room lookup failed:", roomError);
+    }
+
+    if (room) {
+      redirect(`/${room.slug}/inbox`);
+    }
+    // No room yet — auth callback will create one; show sign-in again
   }
 
-  const email = user.email ?? "";
-  return <CreateRoomForm email={email} />;
+  const { next } = await searchParams;
+  return <SignInWithGoogle next={next} />;
 }
