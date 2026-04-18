@@ -11,15 +11,11 @@ export default async function Home({ searchParams }: Props) {
   } = await supabase.auth.getUser();
 
   if (user) {
-    const { data: room, error: roomError } = await supabase
+    const { data: room } = await supabase
       .from("rooms")
       .select("slug")
       .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (roomError) {
-      console.error("[home] room lookup failed:", roomError);
-    }
+      .single();
 
     if (room) {
       redirect(`/${room.slug}/inbox`);

@@ -6,10 +6,9 @@ import { getFunAnonymousEmoji } from "@/lib/fun-anonymous-name";
 import { relativeTime } from "@/lib/relative-time";
 import { generateKeyPair } from "@/lib/crypto/generate-key-pair";
 import { getPrivateKey, storePrivateKey } from "@/lib/crypto/key-storage";
-import { uploadOwnerPublicKey, OwnerKeyConflictError } from "@/lib/crypto/upload-public-key";
+import { uploadOwnerPublicKey } from "@/lib/crypto/upload-public-key";
 import { reportError } from "@/lib/report-error";
 import { usePushNotifications } from "@/lib/push/use-push-notifications";
-import BackupPromptModal from "@/components/BackupPromptModal";
 
 type Props = {
   roomId: string;
@@ -62,7 +61,7 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
     if (
       push.supported &&
       !push.isSubscribed &&
-      push.permission === "default" &&
+      push.permission !== "denied" &&
       !isDismissed
     ) {
       const timer = setTimeout(() => setShowPushPopup(true), 1500);
@@ -70,57 +69,32 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
     }
   }, [push.supported, push.isSubscribed, push.permission, slug]);
 
-  // Pre-generate and upload the owner's public key when needed.
-  //
-  // Three cases:
-  //  1. No local key AND no server key → first-time owner: generate + upload.
-  //  2. No local key AND server HAS a key → DO NOT overwrite. The real key
-  //     lives on another device / in the user's .wolow-key backup. Silently
-  //     generating here would orphan all prior messages. The /settings page
-  //     + BackupPromptModal surface the restore flow.
-  //  3. Local key exists → upload (idempotent when matching; server returns
-  //     409 if it somehow differs, which we swallow — the user should restore
-  //     their real key via /settings rather than silently rotate).
+  // Pre-generate and upload the owner's public key as soon as they open the inbox.
+  // This ensures visiting visitors can always find the owner's key and encrypt immediately.
   useEffect(() => {
     if (typeof crypto === "undefined" || !crypto.subtle) return;
     const keyId = `room:${slug}`;
     (async () => {
       try {
         const existing = await getPrivateKey(keyId);
-
         if (!existing) {
-          // Check server before generating — avoid silent rotation on a new device.
-          const res = await fetch(`/api/rooms/${slug}/keys`);
-          const data = res.ok ? await res.json().catch(() => ({})) : {};
-          const serverHasKey = !!data.owner_public_key;
-          if (serverHasKey) {
-            // Real key is on another device — user must restore from backup.
-            // Settings page will surface this via KeyStatusCard.
-            console.info("[E2EE-Inbox] Server has a key, no local key — restore required");
-            return;
-          }
-          // Legit first-time setup.
           const { publicKey, privateKey } = await generateKeyPair();
+          // Upload FIRST — only store locally if upload succeeds
           await uploadOwnerPublicKey(slug, publicKey);
           await storePrivateKey(keyId, privateKey);
         } else {
-          // Local key exists — ensure server has it. If server already has a
-          // DIFFERENT key (another device rotated it), don't silently overwrite.
-          const publicJwk: JsonWebKey = {
-            kty: existing.kty, n: existing.n, e: existing.e,
-            alg: existing.alg, ext: true, key_ops: ["encrypt"],
-          };
-          try {
-            await uploadOwnerPublicKey(slug, publicJwk);
-          } catch (err) {
-            if (err instanceof OwnerKeyConflictError) {
-              // Another device's key is on the server. This device's key is
-              // effectively stale. Don't overwrite — decrypt failures will
-              // surface the mismatch to the user.
-              console.warn("[E2EE-Inbox] Server key differs from local — not overwriting");
-              return;
+          // Key exists locally — verify it was uploaded to server, re-upload if not
+          const res = await fetch(`/api/rooms/${slug}/keys`);
+          if (res.ok) {
+            const data = await res.json();
+            if (!data.owner_public_key) {
+              // Extract the public part from the stored private JWK
+              const publicJwk: JsonWebKey = {
+                kty: existing.kty, n: existing.n, e: existing.e,
+                alg: existing.alg, ext: true, key_ops: ["encrypt"],
+              };
+              await uploadOwnerPublicKey(slug, publicJwk);
             }
-            throw err;
           }
         }
       } catch (err) {
@@ -441,9 +415,6 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
           </div>
         )}
       </div>
-      {/* Backup prompt — only shows after the owner has at least one conversation */}
-      <BackupPromptModal slug={slug} hasMessages={conversations.length > 0} />
-
       {/* Push notification popup */}
       {showPushPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
