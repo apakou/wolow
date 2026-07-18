@@ -76,6 +76,9 @@ type Props = {
   starterTemplates?: readonly string[];
   /** Disables the composer entirely (e.g. blocked conversation) */
   composerDisabled?: boolean;
+  /** Reports message counts whenever they change, so the parent can react to
+   *  engagement (e.g. show the save-chat prompt to anonymous senders). */
+  onActivity?: (activity: { visitorMessages: number; ownerMessages: number }) => void;
 };
 
 const MAX_LENGTH = 1000;
@@ -602,6 +605,7 @@ export default function ChatView({
   variant = "dark",
   starterTemplates = STARTER_TEMPLATES,
   composerDisabled = false,
+  onActivity,
 }: Props) {
   const V = STYLES[variant];
   const isCandy = variant === "candy";
@@ -634,6 +638,19 @@ export default function ChatView({
 
   const push = usePushNotifications(slug, isOwnerView ? "owner" : "visitor", conversationId);
   const e2ee = useE2EE({ slug, conversationId, isOwnerView });
+
+  // Report engagement to the parent (includes pending messages so the parent
+  // reacts at the moment of send, not after server confirmation).
+  useEffect(() => {
+    if (!onActivity) return;
+    let visitorMessages = 0;
+    let ownerMessages = 0;
+    for (const message of messages) {
+      if (message.is_owner) ownerMessages++;
+      else visitorMessages++;
+    }
+    onActivity({ visitorMessages, ownerMessages });
+  }, [messages, onActivity]);
 
   // Show push popup once messages load, if not yet subscribed and not recently dismissed
   useEffect(() => {

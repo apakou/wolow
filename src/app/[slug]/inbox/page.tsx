@@ -14,7 +14,9 @@ export default async function InboxPage({ params }: Props) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) {
+  // Anonymous visitor sessions can't own rooms offer sign-in (the owner
+  // may simply be signed out on this device) instead of a silent bounce.
+  if (!user || user.is_anonymous) {
     redirect(`/?next=/${slug}/inbox`);
   }
 
@@ -26,7 +28,7 @@ export default async function InboxPage({ params }: Props) {
   }
 
   if (room.needsOnboarding) {
-    // Finish onboarding first — this also guarantees slug changes happen
+    // Finish onboarding first this also guarantees slug changes happen
     // before OwnerInbox generates E2EE keys (keyed by room:{slug}).
     redirect("/welcome");
   }

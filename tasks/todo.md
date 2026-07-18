@@ -1,3 +1,79 @@
+# Anonymous visitor access — Plan (Jul 2026)
+
+User feedback: visitors clicking a shared room link land on the Google login
+screen, contradicting the "anonymous messages" promise. Fix: Supabase
+anonymous sessions for visitors (Option A), plus an in-chat prompt to convert
+to a permanent account (linkIdentity keeps the same auth.uid, so the
+conversation survives).
+
+- [x] 1. `supabase/config.toml`: `enable_anonymous_sign_ins = true` + `enable_manual_linking = true` (linkIdentity requires it). Remind: flip both in hosted dashboard.
+- [x] 2. `src/app/[slug]/page.tsx`: remove `!user` → login redirect; keep owner→inbox redirect; pass `hasSession`/`isAnonymous` to ChatRoom.
+- [x] 3. `ChatRoom.tsx`: if no session, `signInAnonymously()` (browser client) before POST /conversations; reuse error/retry card.
+- [x] 4. `SaveChatPrompt.tsx` (new): dismissible "save this chat" banner for anon senders with ≥1 sent message; CTA `linkIdentity({provider:"google"})` → `/auth/callback?next=/{slug}`; re-shown at most once after an owner reply (localStorage dismissal count).
+- [x] 5. `ChatView.tsx`: optional `onActivity({visitorMessages, ownerMessages})` callback so ChatRoom knows engagement.
+- [x] 6. `/auth/callback`: handle OAuth error params (identity already linked → `/?next=...&auth_error=link_exists`); `SignInWithGoogle` shows tailored message.
+- [x] 7. Harden owner surfaces for anon sessions: `/welcome`, `/profile`, `/settings`, `/{slug}/inbox(/{conversationId})` treat `user.is_anonymous` as signed-out; `/` skips room lookup for anon.
+- [x] 8. Owner escape hatch on visitor page (anon + no messages yet): "This is your link? Sign in" → `/?next=/{slug}/inbox`.
+- [x] 9. Copy pass: help FAQ (senders need no account), SignInWithGoogle invite copy, AnonymityExplainer accuracy (unchanged claims still true).
+- [x] 10. Verify: `tsc --noEmit` clean; eslint 0 errors (3 pre-existing ChatView warnings); manual flow review done. E2E against hosted blocked on dashboard toggles.
+
+## Review Anonymous visitor access
+
+### What changed
+- **Login wall removed**: `/{slug}` renders for everyone. ChatRoom silently calls
+  `signInAnonymously()` when no session exists (client-side only, so JS-less
+  crawlers/OG scrapers never create auth users), then opens the conversation as
+  before. Retries re-check the local session so they never mint a second
+  anonymous user.
+- **Zero DB migrations**: anonymous users carry a real `auth.uid()`, so RLS
+  (`conversations_insert_auth`), the `(room_id, sender_user_id)` upsert, E2EE
+  visitor-key upload, reactions, push, and per-conversation blocking all work
+  unchanged.
+- **Save-chat prompt**: after the first sent message, anonymous senders see a
+  dismissible "Don't lose this chat" banner. CTA uses `linkIdentity()` which
+  keeps the same user id, so the conversation and device E2EE keys survive the
+  Google upgrade. Dismissal is per-conversation; the prompt returns at most
+  once more after the owner replies. If the Google account already has a Wolow
+  profile, `/auth/callback` maps the OAuth error to `auth_error=link_exists`
+  and the sign-in screen explains the chat won't carry over.
+- **Anon-session hardening**: `is_anonymous` sessions are treated as signed-out
+  on `/welcome`, `/profile`, `/settings`, and both inbox pages (an owner signed
+  out on a device gets the sign-in screen, not a silent bounce to the visitor
+  view). `/sent` still works for anonymous senders.
+- **Escape hatch**: before their first message, anonymous visitors see
+  "This is your link? Sign in to open your inbox".
+- **Graceful degradation**: if `signInAnonymously()` fails (provider disabled,
+  or the per-IP anonymous signup rate limit), ChatRoom falls back to the
+  Google sign-in screen (`/?next=/{slug}`) instead of a dead-end error card,
+  and logs the cause via reportError.
+- **Honest copy**: help FAQ leads with "Do I need an account? No."; sign-in
+  screen invite copy says "Sign in to keep your chats".
+
+### Deployment prerequisites (hosted project)
+Dashboard → Authentication → Sign In / Providers:
+1. **Allow anonymous sign-ins** → ON (verified currently OFF via probe:
+   `anonymous_provider_disabled`)
+2. **Allow manual linking** → ON (required by `linkIdentity`)
+Optional: review anonymous rate limit (default 30/hr/IP) and consider captcha
+if abuse appears; consider periodic cleanup of orphaned anonymous users.
+
+### E2E verification (local stack, 2026-07-18)
+Full chain proven against a fresh local Supabase (config.toml flags on, all
+migrations applied): anonymous signup (`is_anonymous: true`) → conversation
+insert WITHOUT session correctly rejected (401/42501 RLS) → conversation
+insert with anon JWT passes `conversations_insert_auth` → `send_message_secure`
+RPC stores the message → readback OK (`is_owner: false`). No code changes were
+needed the hosted dashboard toggles are the only remaining blocker.
+
+### Accepted trade-offs
+- Blocking is per anonymous identity: clearing cookies yields a fresh identity
+  (was Google-account-strong). IP limiter (10 msg/min) remains.
+- A signed-out returning Google sender now gets a new anonymous thread unless
+  they sign back in (escape hatch link available).
+- Anonymous user rows accumulate in `auth.users`.
+
+---
+
 # Wolow MVP Remediation — Plan
 
 Source: Product design audit (Jul 2026). Scope = Tier 1 (P0, launch blockers) + Tier 2 (P1, high-impact).

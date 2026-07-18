@@ -11,7 +11,27 @@ import { logError } from "@/lib/error-logger";
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next");
+  const rawNext = searchParams.get("next");
+  // Only allow same-site relative paths (no "//host" protocol-relative URLs).
+  const next = rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : null;
+
+  // OAuth providers redirect back with error params instead of a code when
+  // the flow fails. The one users actually hit: linkIdentity() from the
+  // save-chat prompt when their Google account already belongs to another
+  // Wolow user surface a tailored message on the sign-in screen.
+  const oauthError = searchParams.get("error");
+  if (oauthError) {
+    const errorCode = searchParams.get("error_code") ?? "";
+    const errorDescription = searchParams.get("error_description") ?? "";
+    console.error("[auth/callback] OAuth error:", oauthError, errorCode, errorDescription);
+    const isAlreadyLinked =
+      errorCode === "identity_already_exists" ||
+      /already.*(linked|exists)/i.test(errorDescription);
+    const params = new URLSearchParams();
+    params.set("auth_error", isAlreadyLinked ? "link_exists" : "1");
+    if (next) params.set("next", next);
+    return NextResponse.redirect(`${origin}/?${params.toString()}`);
+  }
 
   if (code) {
     const supabase = await createClient();

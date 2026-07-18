@@ -11,7 +11,9 @@ export default async function Home({ searchParams }: Props) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (user) {
+  // Anonymous visitor sessions never own rooms; only real accounts get
+  // forwarded to their inbox.
+  if (user && !user.is_anonymous) {
     const room = await getRoomByUserId(user.id);
 
     if (room) {
@@ -39,7 +41,7 @@ export default async function Home({ searchParams }: Props) {
     <SignInWithGoogle
       next={next}
       inviterName={inviterName}
-      authError={Boolean(authError)}
+      authError={authError ?? null}
     />
   );
 }

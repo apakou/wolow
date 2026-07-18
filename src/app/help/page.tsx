@@ -10,13 +10,25 @@ type Faq = { q: string; a: React.ReactNode };
 
 const FAQS: Faq[] = [
   {
+    q: "Do I need an account to send a message?",
+    a: (
+      <>
+        No. Opening someone&apos;s link gives your browser an <strong>anonymous session</strong>{" "}
+        automatically no sign-up, no Google. That session (and your conversation) lives only
+        in this browser: if you clear browser data or switch devices, the chat is gone. You can
+        optionally save your chats with a free account the person you message still never
+        sees who you are. Room owners do sign in, so their inbox is permanent.
+      </>
+    ),
+  },
+  {
     q: "How is my anonymity protected when I send a message?",
     a: (
       <>
-        You sign in with Google so Wolow can prevent spam, but the person you message{" "}
-        <strong>never sees who you are</strong>. They see a randomly-generated nickname
-        (like <span className="font-mono text-secondary">Curious Otter</span>) instead of
-        your real identity. Your Google account, IP address, and device details are never
+        The person you message <strong>never sees who you are</strong>. They see a
+        randomly-generated nickname (like{" "}
+        <span className="font-mono text-secondary">Curious Otter</span>) instead of your real
+        identity. Your account (if you saved one), IP address, and device details are never
         shown to them. The same anonymous identity is reused for the duration of a
         conversation so the recipient can reply, but it has no visible link to you outside
         of that thread.
@@ -76,7 +88,7 @@ const FAQS: Faq[] = [
     a: (
       <>
         The recipient only sees the anonymous nickname assigned to your conversation. They
-        cannot see your IP, your Google account, or any device
+        cannot see your IP, your account, or any device
         information from us. They <em>can</em>, of course, infer who you are from{" "}
         <strong>what you write</strong> so be mindful of personal details in the text
         itself if anonymity matters to you.

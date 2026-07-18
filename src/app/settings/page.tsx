@@ -9,7 +9,8 @@ export default async function SettingsPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) {
+  // Anonymous visitor sessions have no room/settings require a real account
+  if (!user || user.is_anonymous) {
     redirect(`/?next=/settings`);
   }
 
@@ -21,7 +22,7 @@ export default async function SettingsPage() {
 
   if (!room) {
     // Rooms are created automatically on first sign-in by /auth/callback.
-    // Reaching this branch means the callback insert failed — surface that
+    // Reaching this branch means the callback insert failed surface that
     // clearly rather than offering a non-existent "create" action.
     return (
       <div className="flex flex-col items-center justify-center h-dvh bg-app-gradient px-6 text-center gap-3">

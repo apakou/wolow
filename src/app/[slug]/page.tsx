@@ -45,20 +45,27 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function SlugPage({ params }: Props) {
   const { slug } = await params;
 
-  // Require authentication — visitors must be signed in
+  // No login wall: visitors don't need an account to send anonymous messages.
+  // If there is no session yet, ChatRoom silently creates an anonymous one
+  // client-side (so JS-less crawlers never create auth users).
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    redirect(`/?next=/${slug}`);
-  }
 
   const room = await getRoom(slug);
   if (!room) notFound();
 
   // If the signed-in user owns this room, send them to their inbox
-  if (room.user_id === user.id) {
+  if (user && room.user_id === user.id) {
     redirect(`/${slug}/inbox`);
   }
 
-  return <ChatRoom roomId={room.id} slug={room.slug} displayName={room.display_name} />;
+  return (
+    <ChatRoom
+      roomId={room.id}
+      slug={room.slug}
+      displayName={room.display_name}
+      hasSession={Boolean(user)}
+      isAnonymous={!user || user.is_anonymous === true}
+    />
+  );
 }

@@ -17,14 +17,15 @@ export default async function WelcomePage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  // Anonymous visitor sessions don't own rooms onboarding needs a real account
+  if (!user || user.is_anonymous) {
     redirect("/?next=/welcome");
   }
 
   const room = await getRoomByUserId(user.id);
 
   if (!room) {
-    // Auto-provisioning failed — home page surfaces sign-in / error state
+    // Auto-provisioning failed home page surfaces sign-in / error state
     redirect("/");
   }
 

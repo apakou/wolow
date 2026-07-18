@@ -8,8 +8,8 @@ type Props = {
   next?: string;
   /** Display name of the room owner the visitor came to message (from ?next=/{slug}) */
   inviterName?: string | null;
-  /** True when a previous OAuth attempt failed (?auth_error=1) */
-  authError?: boolean;
+  /** Error code from a failed OAuth attempt (?auth_error=1 | link_exists) */
+  authError?: string | null;
 };
 
 export default function SignInWithGoogle({ next, inviterName, authError }: Props) {
@@ -39,7 +39,11 @@ export default function SignInWithGoogle({ next, inviterName, authError }: Props
     // On success the browser navigates away; keep the button in its busy state.
   }
 
-  const showError = localError || authError;
+  const showError = localError || Boolean(authError);
+  const errorMessage =
+    authError === "link_exists"
+      ? "That Google account already has a Wolow profile. Sign in to continue your current anonymous chat won\u2019t carry over."
+      : "Sign-in didn\u2019t work. Please try again.";
 
   return (
     <main className="min-h-screen bg-app-gradient flex items-center justify-center px-4">
@@ -62,7 +66,7 @@ export default function SignInWithGoogle({ next, inviterName, authError }: Props
             </h1>
             <p className="mt-2 text-sm text-muted">
               {inviterName
-                ? `Sign in to continue ${inviterName} will never see who you are. You'll show up as a random nickname.`
+                ? `Sign in to keep your chats ${inviterName} will never see who you are. You'll show up as a random nickname.`
                 : "Claim your link, share it anywhere friends message you anonymously."}
             </p>
           </div>
@@ -92,7 +96,7 @@ export default function SignInWithGoogle({ next, inviterName, authError }: Props
               role="alert"
               className="rounded-2xl border border-red-500/40 bg-red-950/50 px-4 py-3 text-center text-sm text-red-200"
             >
-              Sign-in didn&apos;t work. Please try again.
+              {errorMessage}
             </div>
           )}
 

@@ -15,7 +15,7 @@ export default async function ConversationPage({ params }: Props) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) {
+  if (!user || user.is_anonymous) {
     redirect(`/?next=/${slug}/inbox/${conversationId}`);
   }
 

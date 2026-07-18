@@ -11,7 +11,8 @@ export default async function ProfilePage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  // Anonymous visitor sessions have no profile require a real account
+  if (!user || user.is_anonymous) {
     redirect("/?next=/profile");
   }
 
