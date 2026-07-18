@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 type Props = {
-  /** The signed-in owner's room slug — used for the inbox tab link. */
+  /** The signed-in owner's room slug used for the inbox tab link. */
   slug: string;
 };
 
@@ -22,7 +22,7 @@ const ICON_PATHS: Record<TabKey, string> = {
 };
 
 /**
- * Placeholder with identical dimensions — used by loading.tsx skeleton
+ * Placeholder with identical dimensions used by loading.tsx skeleton
  * screens so the tab bar area doesn't jump when the real nav mounts.
  */
 export function BottomNavSkeleton() {
@@ -41,7 +41,7 @@ export function BottomNavSkeleton() {
 
 /**
  * App-wide bottom navigation for owner screens (icon tabs).
- * Rendered in-flow at the bottom of an `h-dvh` flex column — no fixed
+ * Rendered in-flow at the bottom of an `h-dvh` flex column no fixed
  * positioning, so content never hides behind it.
  */
 export default function BottomNav({ slug }: Props) {
@@ -64,7 +64,7 @@ export default function BottomNav({ slug }: Props) {
       key: "profile",
       href: "/profile",
       label: "Profile",
-      // Settings hangs off the profile screen — keep the tab lit there too
+      // Settings hangs off the profile screen keep the tab lit there too
       active: pathname === "/profile" || pathname === "/settings",
     },
   ];

@@ -5,7 +5,7 @@ import { getFunAnonymousName, getFunAnonymousEmoji } from "@/lib/fun-anonymous-n
 import { relativeTime } from "@/lib/relative-time";
 import BottomNav from "@/components/BottomNav";
 
-export const metadata = { title: "Sent — Wolow" };
+export const metadata = { title: "Sent Wolow" };
 
 export default async function SentPage() {
   const supabase = await createClient();

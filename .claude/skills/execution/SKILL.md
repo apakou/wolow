@@ -4,7 +4,7 @@ TRIGGER: When a PLAN.md file exists and you're asked to "build it", "execute the
 
 ## The Rule
 
-**You are the orchestrator. You do NOT write code. You dispatch sub-agents for ALL implementation work.** This preserves your context window across the entire plan — if you implement code directly, you'll lose track of earlier steps and introduce bugs by Step 5. Sub-agents get a fresh context for each step and exit when done.
+**You are the orchestrator. You do NOT write code. You dispatch sub-agents for ALL implementation work.** This preserves your context window across the entire plan if you implement code directly, you'll lose track of earlier steps and introduce bugs by Step 5. Sub-agents get a fresh context for each step and exit when done.
 
 If you catch yourself writing code, STOP. Dispatch a sub-agent instead.
 
@@ -20,7 +20,7 @@ Read the plan file. Check what's already done (\`git log --oneline -20\`). Repor
 
 **Dispatch a sub-agent** with the prompt template below. One step per sub-agent, always.
 
-**Verify** after the sub-agent finishes — lightweight only:
+**Verify** after the sub-agent finishes lightweight only:
 
 - \`npm run build\` passes
 - \`npm run dev\` starts
@@ -68,7 +68,7 @@ You are implementing Step [N] of the project plan: [step title].
 
 ## What Already Exists
 
-[Key files from previous steps this step depends on — brief]
+[Key files from previous steps this step depends on brief]
 
 ## Files to Create or Modify
 

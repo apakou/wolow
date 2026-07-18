@@ -75,7 +75,7 @@ export default function KeyStatusCard({
           {lastBackup ? (
             <span className="text-slate-200">{relativeTime(lastBackup.toISOString())}</span>
           ) : (
-            <span className="text-amber-400">Never — back up below</span>
+            <span className="text-amber-400">Never back up below</span>
           )}
         </Row>
       </dl>
@@ -83,7 +83,7 @@ export default function KeyStatusCard({
       {mismatch && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200 leading-relaxed">
           The key on this device doesn&apos;t match the one stored on the server. New messages will
-          fail to decrypt. Restore your backup below to fix this, or — if you&apos;ve lost the backup —
+          fail to decrypt. Restore your backup below to fix this, or if you&apos;ve lost the backup —
           you can rotate to your local key (older messages will become unreadable).
         </div>
       )}
@@ -91,7 +91,7 @@ export default function KeyStatusCard({
       {keyMissing && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200 leading-relaxed">
           This browser doesn&apos;t have your private key. If you have a <code>.wolow-key</code> backup,
-          restore it below. Otherwise, opening your inbox will generate a fresh key — and any past
+          restore it below. Otherwise, opening your inbox will generate a fresh key and any past
           messages encrypted to your old key will be lost.
         </div>
       )}

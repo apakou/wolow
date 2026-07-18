@@ -70,7 +70,7 @@ export type SlugValidation =
 export const SLUG_ERROR_MESSAGES: Record<SlugInvalidReason, string> = {
   length: `Must be ${SLUG_MIN}–${SLUG_MAX} characters.`,
   format: "Only lowercase letters, numbers, - and _ (must start with a letter or number).",
-  reserved: "That name is reserved — try another one.",
+  reserved: "That name is reserved try another one.",
 };
 
 /** Normalize + validate a user-supplied slug candidate. */

@@ -4,7 +4,7 @@ import { logSecurityEvent } from "@/lib/security-logger";
 type RateLimitResult = { ok: true } | { ok: false; retryAfter: number };
 
 /**
- * A04: Database-backed rate limiter — shared state across all serverless instances.
+ * A04: Database-backed rate limiter shared state across all serverless instances.
  *
  * Uses the `check_and_increment_rate_limit` PostgreSQL function which performs
  * an atomic INSERT … ON CONFLICT, eliminating race conditions.

@@ -15,7 +15,7 @@ type PushParams = {
   slug: string;
   conversationId: string;
   senderIsOwner: boolean;
-  /** Plaintext preview — omit for E2EE messages to avoid leaking content. */
+  /** Plaintext preview omit for E2EE messages to avoid leaking content. */
   contentPreview?: string;
 };
 
@@ -86,7 +86,7 @@ export async function sendPushNotifications({
         } catch (err: unknown) {
           const statusCode = (err as { statusCode?: number }).statusCode;
           if (statusCode === 410 || statusCode === 404) {
-            // Subscription expired — mark for deletion
+            // Subscription expired mark for deletion
             expiredIds.push(sub.id);
           }
         }

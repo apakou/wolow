@@ -18,9 +18,9 @@ Run the build command (e.g., \`npm run build\`). If TypeScript errors exist, fix
 
 ## 2. Lint
 
-Run the lint command (e.g., \`npm run lint\`). Fix ALL errors — including pre-existing ones, not just yours. If the project has an auto-fix command (e.g., \`npm run lint:fix\`), run that first.
+Run the lint command (e.g., \`npm run lint\`). Fix ALL errors including pre-existing ones, not just yours. If the project has an auto-fix command (e.g., \`npm run lint:fix\`), run that first.
 
-## 3. Type Safety Scan — BLOCKING
+## 3. Type Safety Scan BLOCKING
 
 \`\`\`bash
 CHANGED=$(git diff --cached --name-only | grep -E '\.(ts|tsx)$')
@@ -39,7 +39,7 @@ echo "$CHANGED" | xargs grep -n '@ts-ignore\|@ts-expect-error' 2>/dev/null
 ✅ Type safety: Clean / N violations
 \`\`\`
 
-If something can't be fixed, explain why — don't silently skip it.
+If something can't be fixed, explain why don't silently skip it.
 
 ## Rules
 

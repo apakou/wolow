@@ -3,10 +3,10 @@
  * passphrase and (optionally) write it to IndexedDB at `room:{slug}`.
  *
  * Throws structured errors so the UI can show actionable messages:
- *  - `bad_format`     — file isn't a valid Wolow key file
- *  - `version`        — unknown file version
- *  - `slug_mismatch`  — file is for a different room
- *  - `bad_passphrase` — decryption failed (wrong passphrase or corrupted file)
+ *  - `bad_format`     file isn't a valid Wolow key file
+ *  - `version`        unknown file version
+ *  - `slug_mismatch`  file is for a different room
+ *  - `bad_passphrase` decryption failed (wrong passphrase or corrupted file)
  */
 
 import { fingerprintPublicKey, publicJwkFromPrivate } from "./fingerprint";
@@ -77,7 +77,7 @@ export interface ImportResult {
 
 /**
  * Decrypt a `.wolow-key` file and return the private JWK plus metadata.
- * Does NOT write to IndexedDB — call `writeImportedKey()` separately so the
+ * Does NOT write to IndexedDB call `writeImportedKey()` separately so the
  * caller can confirm fingerprint match against the server first.
  */
 export async function importWrappedKey(

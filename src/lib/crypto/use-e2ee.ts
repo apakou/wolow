@@ -62,7 +62,7 @@ export function useE2EE({ slug, conversationId, isOwnerView }: UseE2EEOptions) {
         // 1. Fetch server-side keys first so we know what's already published.
         //    This avoids the silent-rotation footgun: if the server already has
         //    an owner key but our IndexedDB is empty (new device / cleared data),
-        //    we must NOT generate a new pair — that would orphan prior messages.
+        //    we must NOT generate a new pair that would orphan prior messages.
         //    Retry once on transient failure; if still failing, check for an
         //    existing local key before deciding how to degrade.
         let serverKeys: ConversationKeys | null = null;
@@ -117,7 +117,7 @@ export function useE2EE({ slug, conversationId, isOwnerView }: UseE2EEOptions) {
         if (!existingPrivateKey) {
           const serverHasMyKey = isOwnerView ? !!serverKeys.ownerPublicKey : !!serverKeys.visitorPublicKey;
           if (isOwnerView && serverHasMyKey) {
-            // Owner's real key is on another device — refuse to silently rotate.
+            // Owner's real key is on another device refuse to silently rotate.
             setState({
               ready: false,
               encrypting: false,
@@ -141,7 +141,7 @@ export function useE2EE({ slug, conversationId, isOwnerView }: UseE2EEOptions) {
 
         keysRef.current = serverKeys;
 
-        // Private key is now confirmed in IndexedDB — signal early so
+        // Private key is now confirmed in IndexedDB signal early so
         // decryption can proceed even before the other party's key is fetched.
         setState((prev) => ({ ...prev, keyLoaded: true }));
 
@@ -152,7 +152,7 @@ export function useE2EE({ slug, conversationId, isOwnerView }: UseE2EEOptions) {
         // 5. Recovery: if our key exists locally but not on server, re-upload.
         //    For the owner, this is safe only if the server has NO key at all
         //    (server returns 409 if it has a different one, which we treat as
-        //    "another device owns the server-side key — don't overwrite").
+        //    "another device owns the server-side key don't overwrite").
         const myKeyMissing = isOwnerView ? !keys.ownerPublicKey : !keys.visitorPublicKey;
         if (myKeyMissing && existingPrivateKey) {
           const publicJwk: JsonWebKey = {
@@ -172,7 +172,7 @@ export function useE2EE({ slug, conversationId, isOwnerView }: UseE2EEOptions) {
           } catch (err) {
             if (err instanceof OwnerKeyConflictError) {
               // Another device owns the server key. This device's local key
-              // can't decrypt incoming messages — surface as restore-required.
+              // can't decrypt incoming messages surface as restore-required.
               setState({
                 ready: false,
                 encrypting: false,
@@ -225,7 +225,7 @@ export function useE2EE({ slug, conversationId, isOwnerView }: UseE2EEOptions) {
         if (controller.signal.aborted) return;
         // Suppress transient browser-cancelled network errors (navigation, tab hide, etc.)
         if (err instanceof TypeError && /failed to fetch|load failed/i.test((err as TypeError).message)) return;
-        // Poll retries automatically — log at debug level only
+        // Poll retries automatically log at debug level only
         console.debug("[E2EE] Poll: key fetch failed, will retry", err);
       }
     }, 5_000);
@@ -250,7 +250,7 @@ export function useE2EE({ slug, conversationId, isOwnerView }: UseE2EEOptions) {
         visitorKeyOnServer: !!keys.visitorPublicKey,
       }));
     } catch {
-      // Silent — we'll retry on next message
+      // Silent we'll retry on next message
     }
   }, [slug, conversationId]);
 
@@ -273,7 +273,7 @@ export function useE2EE({ slug, conversationId, isOwnerView }: UseE2EEOptions) {
         // Try refreshing once
         await refreshKeys();
         if (!keysRef.current?.ownerPublicKey || !keysRef.current?.visitorPublicKey) {
-          return null; // Can't encrypt — send as plaintext
+          return null; // Can't encrypt send as plaintext
         }
       }
 

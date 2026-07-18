@@ -8,7 +8,7 @@ type Params = { params: Promise<{ slug: string }> };
 /**
  * POST /api/rooms/[slug]/rotate-token
  *
- * A07: Token revocation — lets the room owner generate a new owner_token,
+ * A07: Token revocation lets the room owner generate a new owner_token,
  * immediately invalidating any previously stolen/leaked cookie.
  *
  * Requires the current valid owner_<slug> cookie.

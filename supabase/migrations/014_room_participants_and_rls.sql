@@ -36,7 +36,7 @@ CREATE POLICY "room_participants_delete_self"
 
 
 -- ============================================================
--- 2. Tighten rooms table — participant-based SELECT & UPDATE
+-- 2. Tighten rooms table participant-based SELECT & UPDATE
 -- ============================================================
 
 -- Drop existing permissive policies
@@ -74,12 +74,12 @@ CREATE POLICY "rooms_update_owner_participant"
     )
   );
 
--- Keep rooms_insert_anyone — room creation is rate-limited at API layer
+-- Keep rooms_insert_anyone room creation is rate-limited at API layer
 -- (new rooms still need an INSERT before participants can be added)
 
 
 -- ============================================================
--- 3. Tighten messages table — participant-based SELECT & INSERT
+-- 3. Tighten messages table participant-based SELECT & INSERT
 -- ============================================================
 
 -- Drop existing permissive policies
@@ -110,7 +110,7 @@ CREATE POLICY "messages_insert_participant"
 
 
 -- ============================================================
--- 4. user_public_keys — already configured in migration 010
+-- 4. user_public_keys already configured in migration 010
 --    SELECT: anyone (public keys are shareable)
 --    INSERT/UPDATE/DELETE: auth.uid() = user_id
 --    No changes needed.

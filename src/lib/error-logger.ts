@@ -15,10 +15,10 @@ type ErrorLogInput = {
 
 /**
  * Log an error to the error_logs table from server-side code.
- * Fire-and-forget — never throws and never blocks the caller.
+ * Fire-and-forget never throws and never blocks the caller.
  */
 export function logError(input: ErrorLogInput): void {
-  // Run async but don't await — we don't want error logging to slow responses
+  // Run async but don't await we don't want error logging to slow responses
   void (async () => {
     try {
       const supabase = await createClient();
@@ -36,7 +36,7 @@ export function logError(input: ErrorLogInput): void {
         p_metadata: input.metadata ?? {},
       });
     } catch {
-      // Logging itself must never fail the request — swallow silently.
+      // Logging itself must never fail the request swallow silently.
       // The console.error below is the last-resort breadcrumb.
       console.error("[error-logger] Failed to persist error log");
     }

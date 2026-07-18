@@ -28,7 +28,7 @@ export default function ProfileClient({
     setSigningOut(true);
     try {
       const supabase = createClient();
-      // Local scope: end the session on this device only — other devices
+      // Local scope: end the session on this device only other devices
       // keep their sessions.
       await supabase.auth.signOut({ scope: "local" });
     } catch (err) {

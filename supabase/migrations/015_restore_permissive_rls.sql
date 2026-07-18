@@ -37,5 +37,5 @@ DROP POLICY IF EXISTS "room_participants_select_own_rooms" ON room_participants;
 DROP POLICY IF EXISTS "room_participants_insert_self" ON room_participants;
 DROP POLICY IF EXISTS "room_participants_delete_self" ON room_participants;
 
--- 6. Drop the room_participants table (unused — app uses anonymous tokens)
+-- 6. Drop the room_participants table (unused app uses anonymous tokens)
 DROP TABLE IF EXISTS room_participants CASCADE;

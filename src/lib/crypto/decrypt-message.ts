@@ -52,7 +52,7 @@ export async function decryptMessage(
     throw new DecryptError("no_key", `Failed to import private key: ${(err as Error).message}`);
   }
 
-  // 2. Unwrap AES key — failure here almost always means the message was
+  // 2. Unwrap AES key failure here almost always means the message was
   // encrypted with a *different* public key than the one matching our private
   // key, i.e. the owner rotated keys after this message was sent.
   const wrappedKey = base64ToBuffer(envelope.keys[role]);
@@ -66,7 +66,7 @@ export async function decryptMessage(
   } catch {
     throw new DecryptError(
       "key_rotated",
-      "Could not unwrap AES key — message was likely encrypted with an older key",
+      "Could not unwrap AES key message was likely encrypted with an older key",
     );
   }
 

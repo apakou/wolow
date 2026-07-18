@@ -4,7 +4,7 @@ import { BottomNavSkeleton } from "@/components/BottomNav";
 export default function Loading() {
   return (
     <div className="flex flex-col h-dvh bg-app-gradient">
-      {/* Header skeleton — mirrors OwnerInbox's header anatomy */}
+      {/* Header skeleton mirrors OwnerInbox's header anatomy */}
       <header className="shrink-0 bg-header-gradient px-4 pt-5 pb-3 flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <div className="h-7 w-28 rounded-lg bg-surface-light/50 animate-pulse" />

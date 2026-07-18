@@ -1,6 +1,6 @@
 /**
  * Tracks when the owner last downloaded a `.wolow-key` backup file for a slug.
- * Stored in localStorage (not synced) — purely a UX hint for the BackupPromptModal
+ * Stored in localStorage (not synced) purely a UX hint for the BackupPromptModal
  * and KeyStatusCard. Losing this hint just means we re-prompt for backup.
  */
 

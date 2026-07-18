@@ -5,7 +5,7 @@
  * 4-word Wolow-themed phrase like "sunny-otter-velvet-comet".
  *
  * Wordlist size ≈ 24 × 24 × 24 × 24 = 331,776 combinations (~18 bits).
- * This is NOT a cryptographic identifier — only a friendly string for humans
+ * This is NOT a cryptographic identifier only a friendly string for humans
  * to compare ("does my local key match the server's?"). Collisions are
  * acceptable here because the underlying SHA-256 hash is the source of truth
  * we'd actually verify against if we needed certainty.

@@ -22,7 +22,7 @@ type PatchBody = {
  *   - slug                  (validated against src/lib/slug.ts rules)
  *   - onboarding_completed  (true → stamps onboarding_completed_at)
  *
- * Requires migration 027 (rooms_update_owner_user policy) — without it
+ * Requires migration 027 (rooms_update_owner_user policy) without it
  * the UPDATE matches 0 rows and this route fails loudly on purpose.
  */
 export async function PATCH(req: Request, { params }: Params) {
@@ -104,7 +104,7 @@ export async function PATCH(req: Request, { params }: Params) {
     .maybeSingle();
 
   if (updateError) {
-    // Unique violation on slug — someone claimed it between check and save.
+    // Unique violation on slug someone claimed it between check and save.
     if (updateError.code === "23505") {
       return NextResponse.json({ error: "That link is already taken." }, { status: 409 });
     }
@@ -114,9 +114,9 @@ export async function PATCH(req: Request, { params }: Params) {
 
   if (!updated) {
     // RLS matched 0 rows: the rooms_update_owner_user policy is missing.
-    // Fail loudly (tasks/lessons.md — never mask migration gaps as success).
+    // Fail loudly (tasks/lessons.md never mask migration gaps as success).
     const message =
-      "Room update matched 0 rows — is migration 027_onboarding.sql applied?";
+      "Room update matched 0 rows is migration 027_onboarding.sql applied?";
     console.error(`[PATCH /api/rooms/${slug}] ${message}`);
     logError({ message, endpoint: `/api/rooms/${slug}`, method: "PATCH", statusCode: 500, slug });
     return NextResponse.json({ error: "Update not permitted" }, { status: 500 });

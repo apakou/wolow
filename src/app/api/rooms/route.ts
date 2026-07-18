@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { logError } from "@/lib/error-logger";
 
 /**
- * GET — list rooms owned by the authenticated user.
+ * GET list rooms owned by the authenticated user.
  */
 export async function GET() {
   const supabase = await createClient();

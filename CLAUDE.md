@@ -66,7 +66,7 @@
 - Use `eval()`, `exec()`, or dynamic code execution on user input
 - Build SQL/shell commands via string concatenation (use parameterized queries / `execFile`)
 - Disable security headers, CORS restrictions, or CSRF protection
-- Store passwords in plaintext — always hash with bcrypt/argon2
+- Store passwords in plaintext always hash with bcrypt/argon2
 - Use `dangerouslySetInnerHTML` or equivalent without explicit sanitization
 
 ### Always Do

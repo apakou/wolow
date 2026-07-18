@@ -1,5 +1,5 @@
 /**
- * Shared PWA helpers — install-prompt detection and display-mode checks.
+ * Shared PWA helpers install-prompt detection and display-mode checks.
  */
 
 export type BeforeInstallPromptEvent = Event & {
@@ -16,7 +16,7 @@ export function isStandaloneDisplayMode(): boolean {
   );
 }
 
-/** iPhone / iPad / iPod — including iPadOS 13+ which reports as Macintosh. */
+/** iPhone / iPad / iPod including iPadOS 13+ which reports as Macintosh. */
 export function isIosDevice(): boolean {
   if (typeof navigator === "undefined") return false;
   if (/iphone|ipad|ipod/i.test(navigator.userAgent)) return true;

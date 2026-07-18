@@ -40,7 +40,7 @@ export default function PromptCard({ displayName }: { displayName: string }) {
         </p>
       </div>
       <p className="anim-rise-in-delayed mt-4 font-display text-sm font-semibold text-slate-300">
-        tap 🎲 for an idea — or just say hi 👋
+        tap 🎲 for an idea or just say hi 👋
       </p>
     </div>
   );

@@ -20,7 +20,7 @@ async function getRoom(slug: string) {
  * GET /api/rooms/[slug]/keys?conversation_id=...
  *
  * Returns both the owner's and visitor's public keys for a conversation.
- * No auth required — public keys are public by definition.
+ * No auth required public keys are public by definition.
  */
 export async function GET(req: Request, { params }: Params) {
   const { slug } = await params;
@@ -60,7 +60,7 @@ export async function GET(req: Request, { params }: Params) {
  *   body    { public_key: JWK, fingerprint?: string, force_rotate?: boolean }
  *   200     { ok: true, fingerprint, rotated }
  *   200     idempotent re-upload of the key the server already holds
- *   409     { error, server_fingerprint } — server holds a DIFFERENT key and
+ *   409     { error, server_fingerprint } server holds a DIFFERENT key and
  *           force_rotate wasn't set; client shows the restore-backup UI
  *   429     force_rotate rate limited (LIMITS.rotateKey per user)
  */
@@ -90,7 +90,7 @@ export async function PUT(req: Request, { params }: Params) {
     return NextResponse.json({ error: "public_key is required" }, { status: 422 });
   }
 
-  // Fingerprint is derived server-side from the submitted key — never trust
+  // Fingerprint is derived server-side from the submitted key never trust
   // the client's value for storage or comparison.
   let fingerprint: string;
   try {
@@ -103,7 +103,7 @@ export async function PUT(req: Request, { params }: Params) {
   let rotated = false;
 
   if (hasExistingKey) {
-    // Legacy rows (pre-026) have no stored fingerprint — compute from the key.
+    // Legacy rows (pre-026) have no stored fingerprint compute from the key.
     const serverFingerprint =
       room.owner_key_fingerprint ??
       (await fingerprintPublicKey(room.owner_public_key as JsonWebKey).catch(() => null));
@@ -134,7 +134,7 @@ export async function PUT(req: Request, { params }: Params) {
 
   // All 5 args named explicitly: uniquely selects the 5-param overload of the
   // RPC (migration 026). A 3-arg call is ambiguous while the legacy 019/025
-  // signature still exists (PGRST203) — see migration 028.
+  // signature still exists (PGRST203) see migration 028.
   const { data: success, error } = await supabase.rpc("set_owner_public_key", {
     p_room_id: room.id,
     p_owner_token: room.owner_token,

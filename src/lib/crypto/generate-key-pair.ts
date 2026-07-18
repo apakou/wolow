@@ -1,6 +1,6 @@
 /**
  * Generates an RSA-OAEP key pair for E2E encryption/decryption.
- * Uses the Web Crypto API — runs only in browser contexts.
+ * Uses the Web Crypto API runs only in browser contexts.
  */
 
 export interface ExportedKeyPair {
@@ -26,7 +26,7 @@ export async function generateKeyPair(): Promise<ExportedKeyPair> {
 
   const keyPair = await crypto.subtle.generateKey(
     KEY_PARAMS,
-    true, // extractable — required to export as JWK
+    true, // extractable required to export as JWK
     KEY_USAGES
   );
 

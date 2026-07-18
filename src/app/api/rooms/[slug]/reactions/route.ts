@@ -22,7 +22,7 @@ function parseBodyValue(body: unknown, key: string): string {
 
 function validateEmoji(raw: string): string | null {
   if (!raw) return null;
-  // Cap at 16 bytes — covers ZWJ sequences, flag emojis, keycap sequences etc.
+  // Cap at 16 bytes covers ZWJ sequences, flag emojis, keycap sequences etc.
   if (raw.length > 16) return null;
   // A03: Reject strings that contain no actual emoji character (prevents arbitrary text/scripts)
   if (!/\p{Emoji}/u.test(raw)) return null;

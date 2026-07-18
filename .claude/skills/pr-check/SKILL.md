@@ -2,7 +2,7 @@
 
 TRIGGER: Before submitting a pull request, or when asked to "check before PR", "run PR check", "verify before merge", or "is this ready to ship".
 
-Full verification before a PR. More thorough than commit-check — includes tests and compliance.
+Full verification before a PR. More thorough than commit-check includes tests and compliance.
 
 ## Pre-flight
 

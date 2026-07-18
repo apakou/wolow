@@ -1,6 +1,6 @@
 type Window = { count: number; resetAt: number };
 
-// A04 — Design limitation: This in-memory store is per-process.
+// A04 Design limitation: This in-memory store is per-process.
 // On Vercel (serverless) each cold-start gets a fresh Map, and concurrent
 // function instances don't share state, so limits can be circumvented by
 // hitting different instances. For production-grade limiting replace this
@@ -8,7 +8,7 @@ type Window = { count: number; resetAt: number };
 const store = new Map<string, Window>();
 
 // Prune expired entries to prevent unbounded memory growth.
-// Called opportunistically on each check — cheap at typical traffic.
+// Called opportunistically on each check cheap at typical traffic.
 function prune(now: number) {
   for (const [key, win] of store) {
     if (now >= win.resetAt) store.delete(key);

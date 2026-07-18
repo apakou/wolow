@@ -1,7 +1,7 @@
 /**
- * Security event logger — writes structured events to stderr so they appear
+ * Security event logger writes structured events to stderr so they appear
  * in Vercel function logs, Supabase edge logs, and any log aggregator.
- * Never include user content or PII — only identifiers needed for auditing.
+ * Never include user content or PII only identifiers needed for auditing.
  */
 
 type SecurityEvent =

@@ -25,7 +25,7 @@ export default function GlobalErrorListener() {
     const onRejection = (event: PromiseRejectionEvent) => {
       const err = event.reason;
 
-      // Ignore errors from browser extensions — not actionable
+      // Ignore errors from browser extensions not actionable
       if (
         err instanceof Error &&
         err.stack?.includes("chrome-extension://")

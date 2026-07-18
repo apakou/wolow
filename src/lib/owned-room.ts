@@ -15,7 +15,7 @@ export type RoomWithOnboarding = {
  *
  * If selecting `onboarding_completed_at` fails (undefined column), we
  * log loudly and fall back to a legacy select, treating the room as
- * already onboarded — sign-in and inbox must keep working even when
+ * already onboarded sign-in and inbox must keep working even when
  * the code ships ahead of the migration (tasks/lessons.md: degrade,
  * don't hard-error; but never silently).
  */
@@ -44,7 +44,7 @@ async function fetchRoom(
 
   console.error(
     `[owned-room] Select with onboarding_completed_at failed (${error.code ?? "?"}): ` +
-      `${error.message} — is migration 027_onboarding.sql applied? Falling back.`
+      `${error.message} is migration 027_onboarding.sql applied? Falling back.`
   );
 
   const { data: fallback, error: fallbackError } = await supabase

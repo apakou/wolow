@@ -18,7 +18,7 @@ async function getRoom(slug: string) {
 }
 
 /**
- * POST — Subscribe to push notifications.
+ * POST Subscribe to push notifications.
  * Requires a valid owner_<slug> or sender_<slug> cookie.
  */
 export async function POST(req: Request, { params }: Params) {
@@ -91,7 +91,7 @@ export async function POST(req: Request, { params }: Params) {
     }
   }
 
-  // Upsert — if this browser endpoint already exists, update the keys/role/room
+  // Upsert if this browser endpoint already exists, update the keys/role/room
   const { error } = await supabase.from("push_subscriptions").upsert(
     {
       room_id: room.id,
@@ -119,7 +119,7 @@ export async function POST(req: Request, { params }: Params) {
 }
 
 /**
- * DELETE — Unsubscribe from push notifications.
+ * DELETE Unsubscribe from push notifications.
  */
 export async function DELETE(req: Request, { params }: Params) {
   await params;

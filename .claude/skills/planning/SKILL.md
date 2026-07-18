@@ -15,7 +15,7 @@ Create a plan in the chat. Before writing any code:
 1. State what you're building and why
 2. List the files you'll create or modify
 3. Describe the expected behavior when it's done
-4. Identify anything you're unsure about — ask questions now, not after writing 200 lines of code
+4. Identify anything you're unsure about ask questions now, not after writing 200 lines of code
 
 Example prompt:
 \`\`\`
@@ -59,7 +59,7 @@ Break the work into phases, and plan each phase separately.
 1. Start with a high-level plan that breaks the project into phases
 2. Each phase gets its own plan file (e.g., \`docs/plans/phase-1-mvp.md\`, \`docs/plans/phase-2-users.md\`)
 3. Each phase plan follows the medium task structure above
-4. Only plan one phase in detail at a time — the later phases will change as you learn
+4. Only plan one phase in detail at a time the later phases will change as you learn
 
 Example prompt:
 \`\`\`
@@ -82,9 +82,9 @@ One sentence. What does this do and who is it for?
 
 ## Files
 
-- \`src/app/pricing/page.tsx\` — Pricing page (server component, fetches tier data)
-- \`src/app/pricing/pricing-card.tsx\` — Individual pricing tier card (client component)
-- \`src/lib/pricing-data.ts\` — Pricing tier definitions (static data)
+- \`src/app/pricing/page.tsx\` Pricing page (server component, fetches tier data)
+- \`src/app/pricing/pricing-card.tsx\` Individual pricing tier card (client component)
+- \`src/lib/pricing-data.ts\` Pricing tier definitions (static data)
 
 ## Steps
 
@@ -111,6 +111,6 @@ One sentence. What does this do and who is it for?
 
 **Smaller plans are better plans.** A 50-line plan you actually follow beats a 500-line plan you ignore. If your plan is getting long, you're trying to build too much at once. Break it into phases.
 
-**Name your open questions.** The worst bugs come from assumptions nobody stated. If you're not sure about something — how auth should work, what data format to use, whether a feature is needed — write it down as an open question and decide before building.
+**Name your open questions.** The worst bugs come from assumptions nobody stated. If you're not sure about something how auth should work, what data format to use, whether a feature is needed write it down as an open question and decide before building.
 
 **Tell Claude Code not to code.** Explicitly. If you don't say "don't write code yet," Claude Code will start building immediately. The phrase "don't write any code yet, just give me the plan" is the most important sentence in your workflow.

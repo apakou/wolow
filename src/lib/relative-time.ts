@@ -1,5 +1,5 @@
 /**
- * Lightweight relative time formatter — no external dependency.
+ * Lightweight relative time formatter no external dependency.
  * Returns strings like "just now", "2m ago", "1h ago", "3d ago".
  */
 export function relativeTime(date: Date | string): string {

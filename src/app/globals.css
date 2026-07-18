@@ -36,14 +36,14 @@ html {
 body {
   /* No rubber-band overscroll behind the app chrome */
   overscroll-behavior-y: none;
-  /* Screens slide in with translateX — never show a horizontal overflow.
+  /* Screens slide in with translateX never show a horizontal overflow.
      `clip` clips without turning body into a scroll container. */
   overflow-x: clip;
 }
 
 a,
 button {
-  /* Immediate taps — no double-tap-zoom delay on interactive elements */
+  /* Immediate taps no double-tap-zoom delay on interactive elements */
   touch-action: manipulation;
 }
 
@@ -224,7 +224,7 @@ button {
   transform: scale(0.93);
 }
 
-/* Confetti particle fall — per-particle drift/spin via CSS custom props */
+/* Confetti particle fall per-particle drift/spin via CSS custom props */
 @keyframes confetti-fall {
   0% {
     opacity: 1;

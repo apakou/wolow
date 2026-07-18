@@ -6,7 +6,7 @@ Enforce the project's design system. All UI work uses existing components and to
 
 ## Rules
 
-**Use components from the UI kit package.** Before creating any new component, check what exists in the UI kit (\`packages/ui/\` or equivalent). If a component exists that does what you need, use it. If it needs a variant, extend it in the UI kit — do not create a one-off version in the app.
+**Use components from the UI kit package.** Before creating any new component, check what exists in the UI kit (\`packages/ui/\` or equivalent). If a component exists that does what you need, use it. If it needs a variant, extend it in the UI kit do not create a one-off version in the app.
 
 **Never hardcode visual values.** This applies to:
 
@@ -20,7 +20,7 @@ Enforce the project's design system. All UI work uses existing components and to
 
 If you write a hex code, rgb value, pixel value for spacing, or arbitrary Tailwind value (\`text-[14px]\`, \`bg-[#3B82F6]\`, \`p-[13px]\`), you are violating this skill.
 
-**Compose, don't create.** Build pages by composing UI kit components. A page should be mostly layout and composition with very little custom styling. If a page requires significant custom CSS, that's a signal that the UI kit is missing a component — create it in the UI kit, not in the page.
+**Compose, don't create.** Build pages by composing UI kit components. A page should be mostly layout and composition with very little custom styling. If a page requires significant custom CSS, that's a signal that the UI kit is missing a component create it in the UI kit, not in the page.
 
 ## Before Writing UI Code
 

@@ -1,4 +1,4 @@
-// Wolow Service Worker — network-first for pages/API, cache-first for static assets
+// Wolow Service Worker network-first for pages/API, cache-first for static assets
 const CACHE_NAME = "wolow-v1";
 const STATIC_ASSETS = ["/", "/manifest.webmanifest"];
 
@@ -32,7 +32,7 @@ self.addEventListener("fetch", (event) => {
   // Skip cross-origin requests (Supabase, analytics, etc.)
   if (url.origin !== self.location.origin) return;
 
-  // Skip API routes and Next.js internal routes — always network
+  // Skip API routes and Next.js internal routes always network
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/_next/")) {
     return;
   }

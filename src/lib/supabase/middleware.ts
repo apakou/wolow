@@ -25,7 +25,7 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // Refresh session — do not add any logic between createServerClient and getUser
+  // Refresh session do not add any logic between createServerClient and getUser
   // that could cause the session cookie to be missing on the response.
   await supabase.auth.getUser();
 

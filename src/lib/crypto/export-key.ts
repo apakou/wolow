@@ -62,7 +62,7 @@ async function deriveKey(passphrase: string, salt: Uint8Array<ArrayBuffer>): Pro
 /**
  * Encrypt a private JWK with a passphrase and return a Blob ready to download.
  *
- * @throws if `passphrase.length < 12` (basic guard — UI should enforce too)
+ * @throws if `passphrase.length < 12` (basic guard UI should enforce too)
  */
 export async function exportWrappedKey(
   privateJwk: JsonWebKey,

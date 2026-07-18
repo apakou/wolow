@@ -1,6 +1,6 @@
 /**
  * Secure private-key storage using IndexedDB.
- * Keys never leave the browser — they are stored in a dedicated
+ * Keys never leave the browser they are stored in a dedicated
  * object store and retrieved by a string identifier:
  *   - Owner keys: "room:{slug}"
  *   - Visitor keys: "conv:{conversationId}"

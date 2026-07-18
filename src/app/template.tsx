@@ -12,7 +12,7 @@ const useIsoLayoutEffect =
 /**
  * Remounts on every route navigation and plays a native-app style screen
  * transition: push (slide in from right), pop (slide in from left) or a
- * quick tab cross-fade — direction inferred in src/lib/nav-transition.ts.
+ * quick tab cross-fade direction inferred in src/lib/nav-transition.ts.
  */
 export default function Template({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

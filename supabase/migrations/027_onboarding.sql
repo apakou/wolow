@@ -2,7 +2,7 @@
 -- 027_onboarding.sql
 -- Onboarding flow support (NGL-style /welcome wizard).
 --
---   1. rooms.onboarding_completed_at — NULL means the owner hasn't
+--   1. rooms.onboarding_completed_at NULL means the owner hasn't
 --      finished the /welcome flow yet. Backfilled with now() for all
 --      existing rooms so current users never see onboarding.
 --
@@ -25,7 +25,7 @@
 ALTER TABLE rooms
   ADD COLUMN IF NOT EXISTS onboarding_completed_at timestamptz;
 
--- Existing rooms predate the onboarding flow — mark them complete.
+-- Existing rooms predate the onboarding flow mark them complete.
 UPDATE rooms
 SET onboarding_completed_at = now()
 WHERE onboarding_completed_at IS NULL;

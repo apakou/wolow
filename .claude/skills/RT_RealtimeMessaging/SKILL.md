@@ -1,6 +1,6 @@
 Description: Implements WhatsApp-like fluid realtime messaging using Supabase Realtime WebSocket channels with optimistic UI, delivery status, reconnection handling, and broadcast events.
 
-• Purpose: Make chat messaging feel instant and responsive — messages appear immediately on send, delivery/read status is tracked, and the connection gracefully handles drops.
+• Purpose: Make chat messaging feel instant and responsive messages appear immediately on send, delivery/read status is tracked, and the connection gracefully handles drops.
 
 • Inputs: roomId (string), conversationId (string), role ("owner" | "visitor"), e2ee hooks from use-e2ee.ts.
 
@@ -12,8 +12,8 @@ Description: Implements WhatsApp-like fluid realtime messaging using Supabase Re
 
 Wolow uses **Supabase Realtime** (WebSocket-based) for all realtime features. There are two channel types:
 
-1. **postgres_changes** — triggered when rows are inserted/updated/deleted in the database. Used for durable message delivery.
-2. **broadcast** — ephemeral events sent directly between connected clients via the Supabase Realtime server. Used for typing indicators, presence, and delivery receipts.
+1. **postgres_changes** triggered when rows are inserted/updated/deleted in the database. Used for durable message delivery.
+2. **broadcast** ephemeral events sent directly between connected clients via the Supabase Realtime server. Used for typing indicators, presence, and delivery receipts.
 
 The goal is WhatsApp-like UX:
 - Messages appear instantly (optimistic UI)
@@ -74,7 +74,7 @@ async function sendMessage(content: string) {
       )
     );
   } catch (err) {
-    // 5. Mark as failed — allow retry
+    // 5. Mark as failed allow retry
     setMessages((prev) =>
       prev.map((m) =>
         m.id === optimisticId ? { ...m, status: "failed" } : m
@@ -87,7 +87,7 @@ async function sendMessage(content: string) {
 **Rules:**
 - Always generate a client-side UUID for optimistic messages
 - Pass `optimistic_id` to the server so the realtime subscription can deduplicate
-- Never remove a failed message — show retry affordance
+- Never remove a failed message show retry affordance
 - Status progression: `sending` → `sent` → `delivered` → `read` → or `failed`
 
 ### 2. Channel Subscription with Deduplication
@@ -165,7 +165,7 @@ useEffect(() => {
 
 ### 3. Delivery & Read Receipts via Broadcast
 
-Use Supabase broadcast channels for ephemeral delivery/read status — no database writes needed.
+Use Supabase broadcast channels for ephemeral delivery/read status no database writes needed.
 
 ```typescript
 // Subscribe to receipt events on the same channel
@@ -253,7 +253,7 @@ useEffect(() => {
 
 ### 5. Connection Resilience & Reconnection
 
-Handle WebSocket disconnections gracefully — critical for mobile users.
+Handle WebSocket disconnections gracefully critical for mobile users.
 
 ```typescript
 // Monitor channel status
@@ -296,7 +296,7 @@ async function fetchMessagesSince(since: string) {
 **Rules:**
 - Always track `lastMessageTimestamp` so you can gap-fill after reconnection
 - Show a subtle banner when connection is degraded ("Connecting...")
-- Never silently drop messages — always reconcile on reconnect
+- Never silently drop messages always reconcile on reconnect
 - Supabase Realtime auto-reconnects, but you must refetch missed data
 
 ### 6. Single Channel per Conversation
@@ -319,7 +319,7 @@ const channel = supabase
 ```
 
 **Rules:**
-- One channel per active conversation — never open multiple channels for the same conversation
+- One channel per active conversation never open multiple channels for the same conversation
 - Set `broadcast: { self: false }` to avoid processing your own broadcast events
 - Unsubscribe in cleanup: `supabase.removeChannel(channel)`
 
@@ -357,17 +357,17 @@ useEffect(() => {
 ## Integration with Existing Codebase
 
 ### Files to Modify
-- `src/components/ChatView.tsx` — Add optimistic updates, delivery status, typing indicators, reconnection handling
-- `src/app/[slug]/inbox/components/OwnerInbox.tsx` — Add realtime unread count updates
+- `src/components/ChatView.tsx` Add optimistic updates, delivery status, typing indicators, reconnection handling
+- `src/app/[slug]/inbox/components/OwnerInbox.tsx` Add realtime unread count updates
 
 ### Files to Create (if extracting hooks)
-- `src/lib/realtime/use-realtime-messages.ts` — Hook for message subscription + optimistic updates
-- `src/lib/realtime/use-typing-indicator.ts` — Hook for typing broadcast
-- `src/lib/realtime/use-delivery-status.ts` — Hook for delivery/read receipts
-- `src/lib/realtime/use-connection-status.ts` — Hook for monitoring WebSocket health
+- `src/lib/realtime/use-realtime-messages.ts` Hook for message subscription + optimistic updates
+- `src/lib/realtime/use-typing-indicator.ts` Hook for typing broadcast
+- `src/lib/realtime/use-delivery-status.ts` Hook for delivery/read receipts
+- `src/lib/realtime/use-connection-status.ts` Hook for monitoring WebSocket health
 
 ### Database Changes Needed
-- Add `status` column to messages table (optional — only if persisting delivery status)
+- Add `status` column to messages table (optional only if persisting delivery status)
 - OR handle status purely client-side via broadcast (recommended for MVP)
 
 ### CSP Policy
@@ -379,22 +379,22 @@ The existing CSP in `next.config.ts` already allows WebSocket connections:
 
 ## Performance Guidelines
 
-1. **Batch state updates** — Use functional setState to avoid stale closures
-2. **Debounce typing events** — Max 1 broadcast per 300ms
-3. **Virtualize long message lists** — Use `react-window` or `@tanstack/react-virtual` for 500+ messages
-4. **Limit channel listeners** — Unsubscribe from channels not in view
-5. **Avoid re-renders** — Memoize message components with `React.memo` and stable keys
-6. **IndexedDB for message cache** — Store decrypted messages locally for instant load on revisit
+1. **Batch state updates** Use functional setState to avoid stale closures
+2. **Debounce typing events** Max 1 broadcast per 300ms
+3. **Virtualize long message lists** Use `react-window` or `@tanstack/react-virtual` for 500+ messages
+4. **Limit channel listeners** Unsubscribe from channels not in view
+5. **Avoid re-renders** Memoize message components with `React.memo` and stable keys
+6. **IndexedDB for message cache** Store decrypted messages locally for instant load on revisit
 
 ---
 
 ## Security Considerations
 
-1. **Never trust broadcast payloads** — Validate sender identity server-side when needed
-2. **E2EE must be applied before optimistic rendering** — Encrypt content before sending, store encrypted version
-3. **Rate-limit broadcast events** — Client-side throttle to prevent abuse
-4. **Don't expose message IDs in broadcast receipts** if IDs are sequential (use UUIDs — already in place)
-5. **Sanitize all message content** before rendering — XSS prevention applies to realtime messages too
+1. **Never trust broadcast payloads** Validate sender identity server-side when needed
+2. **E2EE must be applied before optimistic rendering** Encrypt content before sending, store encrypted version
+3. **Rate-limit broadcast events** Client-side throttle to prevent abuse
+4. **Don't expose message IDs in broadcast receipts** if IDs are sequential (use UUIDs already in place)
+5. **Sanitize all message content** before rendering XSS prevention applies to realtime messages too
 
 ---
 
@@ -405,4 +405,4 @@ The existing CSP in `next.config.ts` already allows WebSocket connections:
 - ❌ Polling for new messages instead of using realtime subscriptions
 - ❌ Removing failed messages from the UI (always show retry option)
 - ❌ Ignoring channel status changes (always handle reconnection)
-- ❌ Using `setTimeout` for reconnection (Supabase handles this — just gap-fill on reconnect)
+- ❌ Using `setTimeout` for reconnection (Supabase handles this just gap-fill on reconnect)
