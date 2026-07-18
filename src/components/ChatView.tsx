@@ -36,7 +36,7 @@ export type Message = {
   failed?: boolean;
   /** Decrypted plaintext (set client-side after decryption) */
   decryptedContent?: string;
-  /** Set when decryption failed — drives DecryptErrorBubble rendering */
+  /** Set when decryption failed drives DecryptErrorBubble rendering */
   decryptError?: { reason: DecryptErrorReason; message: string };
   /** True when the message was received via broadcast (before DB confirms) */
   _fromBroadcast?: boolean;
@@ -60,7 +60,7 @@ type Props = {
   roomId: string;
   slug: string;
   displayName: string;
-  /** Optional conversation scope — when set, only messages for this thread are shown */
+  /** Optional conversation scope when set, only messages for this thread are shown */
   conversationId?: string;
   /** True when the room owner is viewing (owner messages = right/blue).
    *  False when an anonymous sender is viewing (sender messages = right/blue). */
@@ -70,10 +70,12 @@ type Props = {
   /** Extra content rendered just above the composer (e.g. anonymity explainer) */
   aboveComposer?: React.ReactNode;
   inputPlaceholder?: string;
-  /** Visual treatment — "dark" (plain) or "candy" (playful). Both dark-based. */
+  /** Visual treatment "dark" (plain) or "candy" (playful). Both dark-based. */
   variant?: ChatVariant;
   /** Templates the 🎲 dice inserts into the composer (candy variant) */
   starterTemplates?: readonly string[];
+  /** Disables the composer entirely (e.g. blocked conversation) */
+  composerDisabled?: boolean;
 };
 
 const MAX_LENGTH = 1000;
@@ -82,7 +84,7 @@ const LONG_PRESS_MS = 350;
 const SWIPE_REPLY_PX = 56;
 
 // ─── Visual variants ─────────────────────────────────────────────────────────
-// "dark" is the owner-side default — its class strings are the pre-variant
+// "dark" is the owner-side default its class strings are the pre-variant
 // originals, verbatim. "candy" is the playful NGL-style visitor treatment:
 // vivid gradient, white cards, chunky display type, squishy buttons.
 
@@ -130,7 +132,7 @@ const STYLES: Record<
     newMsgToast: "bg-accent text-white",
     skeletonBubble: "bg-surface-light/50",
     composer:
-      "shrink-0 border-t border-border bg-surface/80 backdrop-blur-lg px-4 py-3 flex flex-col gap-2",
+      "shrink-0 border-t border-border bg-surface/80 backdrop-blur-lg px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex flex-col gap-2",
     errorText: "text-xs text-red-400",
     replyBar:
       "flex items-start justify-between gap-2 rounded-xl border border-border bg-surface-light/70 px-3 py-2",
@@ -138,7 +140,7 @@ const STYLES: Record<
     replyText: "text-xs text-slate-200 truncate",
     replyCancel: "shrink-0 text-muted hover:text-white transition",
     input:
-      "flex-1 resize-none bg-surface-light border border-border rounded-2xl px-4 py-3 text-sm text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent transition max-h-32 overflow-y-auto",
+      "flex-1 resize-none bg-surface-light border border-border rounded-2xl px-4 py-3 text-base text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent transition max-h-32 overflow-y-auto disabled:opacity-50",
     sendBtn:
       "shrink-0 bg-accent hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed text-white p-3 rounded-2xl transition-all shadow-lg",
     counter: "text-[11px] text-muted",
@@ -159,7 +161,7 @@ const STYLES: Record<
     newMsgToast: "bg-accent text-white",
     skeletonBubble: "bg-surface-light/50",
     composer:
-      "shrink-0 border-t border-border bg-surface/80 backdrop-blur-lg px-4 py-3 flex flex-col gap-2",
+      "shrink-0 border-t border-border bg-surface/80 backdrop-blur-lg px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex flex-col gap-2",
     errorText: "text-xs text-red-400",
     replyBar:
       "flex items-start justify-between gap-2 rounded-xl border border-border bg-surface-light/70 px-3 py-2",
@@ -167,7 +169,7 @@ const STYLES: Record<
     replyText: "text-xs text-slate-200 truncate",
     replyCancel: "shrink-0 text-muted hover:text-white transition",
     input:
-      "flex-1 resize-none bg-surface-light border border-border rounded-3xl px-4 py-3 text-sm text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent transition max-h-32 overflow-y-auto",
+      "flex-1 resize-none bg-surface-light border border-border rounded-3xl px-4 py-3 text-base text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent transition max-h-32 overflow-y-auto disabled:opacity-50",
     sendBtn:
       "btn-squish shrink-0 bg-accent hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed text-white p-3 rounded-full transition-all shadow-lg",
     counter: "text-[11px] text-muted",
@@ -208,7 +210,7 @@ function NotificationBell({
       disabled={loading || denied}
       className="shrink-0 p-1 rounded-lg text-muted hover:text-white transition disabled:opacity-40"
       aria-label={active ? "Disable notifications" : "Enable notifications"}
-      title={denied ? "Notifications blocked — update browser settings" : active ? "Notifications on" : "Turn on notifications"}
+      title={denied ? "Notifications blocked update browser settings" : active ? "Notifications on" : "Turn on notifications"}
     >
       {active ? (
         /* Bell filled */
@@ -360,7 +362,7 @@ function Bubble({
   isReactionBusy: (messageId: string, emoji: string) => boolean;
 }) {
   const V = STYLES[variant];
-  // In-bubble reply preview — both variants use dark bubbles for "mine" and
+  // In-bubble reply preview both variants use dark bubbles for "mine" and
   // dark surfaces for "theirs", so white-on-dark preview text works everywhere.
   const replyPreview = {
     box: "mb-2 px-2.5 py-1.5 rounded-lg bg-black/20 border border-white/15",
@@ -555,6 +557,30 @@ function Bubble({
               {emoji}
             </button>
           ))}
+          {!message.decryptError && (
+            <>
+              <span className="mx-0.5 h-4 w-px bg-white/15" aria-hidden="true" />
+              <button
+                type="button"
+                onClick={() => {
+                  setPickerOpen(false);
+                  onSwipeReply({
+                    id: message.id,
+                    content: message.decryptedContent ?? message.content,
+                    is_owner: message.is_owner,
+                  });
+                }}
+                className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-sm transition
+                  focus-visible:outline-none focus-visible:ring-2 ${V.pickerBtn}`}
+                aria-label="Reply to this message"
+                title="Reply"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-slate-200">
+                  <path fillRule="evenodd" d="M7.793 2.232a.75.75 0 0 1-.025 1.06L3.622 7.25h10.003a5.375 5.375 0 0 1 0 10.75H10.75a.75.75 0 0 1 0-1.5h2.875a3.875 3.875 0 0 0 0-7.75H3.622l4.146 3.957a.75.75 0 0 1-1.036 1.085l-5.5-5.25a.75.75 0 0 1 0-1.085l5.5-5.25a.75.75 0 0 1 1.06.025Z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </>
+          )}
         </div>
       )}
       {!message.pending && <TimeLabel date={message.created_at} className={V.timeLabel} />}
@@ -575,6 +601,7 @@ export default function ChatView({
   inputPlaceholder,
   variant = "dark",
   starterTemplates = STARTER_TEMPLATES,
+  composerDisabled = false,
 }: Props) {
   const V = STYLES[variant];
   const isCandy = variant === "candy";
@@ -582,7 +609,10 @@ export default function ChatView({
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [newMessageToast, setNewMessageToast] = useState(false);
+  const [pushToast, setPushToast] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [reactionBusy, setReactionBusy] = useState<Record<string, boolean>>({});
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [showPushPopup, setShowPushPopup] = useState(false);
@@ -597,6 +627,8 @@ export default function ChatView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true); // track without re-render
+  const loadedRef = useRef(false);
+  const coarsePointerRef = useRef(false);
   // Holds the active Supabase realtime channel so handleSubmit can broadcast instantly
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null);
 
@@ -656,7 +688,7 @@ export default function ChatView({
             const plain = await e2ee.decrypt(msg.encrypted_content!);
             return { id: msg.id, decryptedContent: plain };
           } catch {
-            return null; // Still can't decrypt — leave as-is
+            return null; // Still can't decrypt leave as-is
           }
         })
       );
@@ -778,29 +810,85 @@ export default function ChatView({
     return () => observer.disconnect();
   }, [loaded]);
 
-  // ── Fetch existing messages ────────────────────────────────────────────────
-  useEffect(() => {
+  // ── Fetch existing messages (also used for retry and reconnect catch-up) ──
+  const fetchMessages = useCallback(async () => {
     const qs = conversationId ? `?conversation_id=${conversationId}` : "";
-    fetch(`/api/rooms/${slug}/messages${qs}`)
-      .then((r) => r.json())
-      .then(async (data: Message[]) => {
-        if (!Array.isArray(data)) {
-          setLoaded(true);
-          return;
-        }
-        const decrypted = await decryptAll(data);
-        setMessages(decrypted);
-        setLoaded(true);
-      })
-      .catch((err: unknown) => {
-        reportError({ message: err instanceof Error ? err.message : "Failed to fetch messages", endpoint: `/api/rooms/${slug}/messages`, slug });
-        setLoaded(true);
+    try {
+      const res = await fetch(`/api/rooms/${slug}/messages${qs}`);
+      const data: unknown = await res.json();
+      if (!res.ok || !Array.isArray(data)) {
+        throw new Error("Failed to fetch messages");
+      }
+      const decrypted = await decryptAll(data as Message[]);
+      setMessages((prev) => {
+        // Preserve local in-flight/failed bubbles the server doesn't know yet
+        const localExtras = prev.filter(
+          (m) => (m.pending || m.failed) && !decrypted.some((d) => d.id === m.id)
+        );
+        return [...decrypted, ...localExtras];
       });
+      setLoadError(false);
+      setLoaded(true);
+    } catch (err: unknown) {
+      reportError({ message: err instanceof Error ? err.message : "Failed to fetch messages", endpoint: `/api/rooms/${slug}/messages`, slug });
+      // Never masquerade a network failure as an empty conversation
+      setLoadError(true);
+      setLoaded(true);
+    }
   }, [slug, conversationId, decryptAll]);
+
+  const fetchMessagesRef = useRef(fetchMessages);
+  useEffect(() => {
+    fetchMessagesRef.current = fetchMessages;
+  }, [fetchMessages]);
+
+  useEffect(() => {
+    loadedRef.current = loaded;
+  }, [loaded]);
+
+  useEffect(() => {
+    void fetchMessages();
+  }, [fetchMessages]);
+
+  // Refetch when the tab becomes visible again mobile browsers freeze
+  // WebSockets in the background, so messages can be missed silently.
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible" && loadedRef.current) {
+        void fetchMessagesRef.current();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
+  // On touch devices Enter inserts a newline (no Shift key exists); sending is
+  // done via the send button. On fine-pointer devices Enter sends.
+  useEffect(() => {
+    coarsePointerRef.current =
+      window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
+  }, []);
+
+  // Auto-grow the composer with its content (capped by the max-h-32 class)
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
+  }, [input]);
+
+  // Auto-hide the push-notification feedback toast
+  useEffect(() => {
+    if (!pushToast) return;
+    const timer = setTimeout(() => setPushToast(null), 3000);
+    return () => clearTimeout(timer);
+  }, [pushToast]);
 
   // ── Realtime subscription ─────────────────────────────────────────────────
   useEffect(() => {
     const supabase = createClient();
+    let disposed = false;
+    let hadDrop = false;
     const filter = conversationId
       ? `conversation_id=eq.${conversationId}`
       : `room_id=eq.${roomId}`;
@@ -915,7 +1003,7 @@ export default function ChatView({
               // Deduplicate by ID first (POST response likely already replaced optimistic)
               if (prev.some((m) => m.id === decrypted.id)) return prev;
               // Replace matching optimistic OR broadcast-placeholder message.
-              // Match by encrypted_content (exact) when available — it's deterministic
+              // Match by encrypted_content (exact) when available it's deterministic
               // across broadcast and postgres_changes and unaffected by decrypt failures.
               // Fall back to plaintext content match for non-encrypted messages.
               const placeholderIdx = prev.findIndex((m) => {
@@ -930,7 +1018,7 @@ export default function ChatView({
                 const next = [...prev];
                 const placeholder = prev[placeholderIdx];
                 // Prefer the placeholder's already-decrypted plaintext if this
-                // handler's decrypt failed — prevents a successfully-displayed
+                // handler's decrypt failed prevents a successfully-displayed
                 // message from flipping to an error bubble.
                 const placeholderDecrypted = placeholder.decryptedContent;
                 const thisDecryptFailed =
@@ -995,10 +1083,29 @@ export default function ChatView({
           setReactionFromRealtime(removed.message_id, removed.emoji, removed.is_owner, "delete");
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (disposed) return;
+        if (status === "SUBSCRIBED") {
+          if (hadDrop) {
+            hadDrop = false;
+            // Catch up on anything missed while the socket was down
+            void fetchMessagesRef.current();
+          }
+          setReconnecting(false);
+        } else if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          // supabase-js retries automatically; tell the user in the meantime
+          hadDrop = true;
+          setReconnecting(true);
+        }
+      });
 
     channelRef.current = channel;
     return () => {
+      disposed = true;
       channelRef.current = null;
       supabase.removeChannel(channel);
     };
@@ -1025,6 +1132,7 @@ export default function ChatView({
   // ── Submit ────────────────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (composerDisabled) return;
     const content = input.trim();
     if (!content) return;
 
@@ -1052,7 +1160,7 @@ export default function ChatView({
 
     const replyTargetId = replyTo?.id ?? null;
 
-    // Optimistic insert — show the plaintext immediately
+    // Optimistic insert show the plaintext immediately
     const optimisticId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const optimistic: Message = {
       id: optimisticId,
@@ -1090,7 +1198,7 @@ export default function ChatView({
           encrypted_content: encryptedContent,
         };
       } else {
-        // No crypto (insecure context) — send unencrypted
+        // No crypto (insecure context) send unencrypted
         bodyPayload = {
           content,
           conversation_id: conversationId,
@@ -1164,7 +1272,7 @@ export default function ChatView({
         prev.map((m) => (m.id === optimisticId ? { ...m, pending: false, failed: true } : m))
       );
       reportError({ message: err instanceof Error ? err.message : "Send message network error", endpoint: `/api/rooms/${slug}/messages`, method: "POST", slug });
-      setError("Network error — please try again");
+      setError("Network error please try again");
     }
   }
 
@@ -1207,7 +1315,7 @@ export default function ChatView({
 
   return (
     <div className={V.root}>
-      {/* Header — compact single row: back · avatar · name + trust line · bell */}
+      {/* Header compact single row: back · avatar · name + trust line · bell */}
       <header className={V.header}>
         {header ?? (
           <div className="flex items-center gap-2.5 px-3 py-2.5">
@@ -1267,8 +1375,40 @@ export default function ChatView({
 
       {/* Scrollable message list */}
       <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        {reconnecting && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="pointer-events-none sticky top-2 z-10 flex justify-center"
+          >
+            <span className="rounded-full border border-amber-500/40 bg-amber-500/20 px-3 py-1 text-[11px] font-medium text-amber-300 backdrop-blur">
+              Reconnecting…
+            </span>
+          </div>
+        )}
         {!loaded ? (
           <MessageSkeleton V={V} />
+        ) : loadError && messages.length === 0 ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-8 text-center">
+            <div className="w-12 h-12 rounded-full bg-surface-light flex items-center justify-center mb-1">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-amber-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0 3.75h.008v.008H12v-.008ZM21.75 12a9.75 9.75 0 1 1-19.5 0 9.75 9.75 0 0 1 19.5 0Z" />
+              </svg>
+            </div>
+            <p className="text-slate-300 text-sm font-medium">Couldn&apos;t load messages</p>
+            <p className="text-muted text-xs">Check your connection and try again.</p>
+            <button
+              type="button"
+              onClick={() => {
+                setLoaded(false);
+                setLoadError(false);
+                void fetchMessages();
+              }}
+              className="mt-2 rounded-full bg-accent px-5 py-2 text-xs font-semibold text-white transition hover:opacity-90"
+            >
+              Try again
+            </button>
+          </div>
         ) : messages.length === 0 ? (
           isCandy && !isOwnerView ? (
             <PromptCard displayName={displayName} />
@@ -1347,7 +1487,7 @@ export default function ChatView({
             <button
               type="button"
               onClick={handleDice}
-              disabled={diceDisabled}
+              disabled={diceDisabled || composerDisabled}
               className="btn-squish shrink-0 flex h-[46px] w-[46px] items-center justify-center rounded-full border border-border bg-surface-light transition hover:bg-surface disabled:opacity-40 disabled:cursor-not-allowed"
               aria-label="Give me an idea"
               title={diceDisabled ? "Clear the box to roll an idea" : "Roll a message idea"}
@@ -1362,7 +1502,9 @@ export default function ChatView({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              // Enter sends only on fine-pointer devices; on touch keyboards
+              // Enter inserts a newline (there is no Shift+Enter on mobile).
+              if (e.key === "Enter" && !e.shiftKey && !coarsePointerRef.current) {
                 e.preventDefault();
                 handleSubmit(e as unknown as React.FormEvent);
               }
@@ -1370,11 +1512,13 @@ export default function ChatView({
             placeholder={inputPlaceholder ?? `Send ${displayName} an anonymous message…`}
             maxLength={MAX_LENGTH}
             rows={1}
+            disabled={composerDisabled}
+            aria-label={inputPlaceholder ?? `Send ${displayName} an anonymous message`}
             className={V.input}
           />
           <button
             type="submit"
-            disabled={input.trim().length === 0}
+            disabled={input.trim().length === 0 || composerDisabled}
             title={undefined}
             className={V.sendBtn}
             aria-label="Send message"
@@ -1395,6 +1539,10 @@ export default function ChatView({
               <Link href="/settings" className={V.statusLink}>
                 Restore your key to send messages
               </Link>
+            ) : e2ee.error && e2ee.error.includes("HTTPS") ? (
+              <p className={V.statusMuted}>Unencrypted conversation</p>
+            ) : e2ee.error ? (
+              <p className={V.errorText}>Encryption couldn&apos;t start. Refresh to try again.</p>
             ) : e2ee.keyLoaded && !(isOwnerView ? e2ee.visitorKeyOnServer : e2ee.ownerKeyOnServer) ? (
               <p className={V.statusMuted}>Unencrypted conversation</p>
             ) : (
@@ -1408,6 +1556,18 @@ export default function ChatView({
           </p>
         </div>
       </form>
+
+      {/* Push subscription feedback toast */}
+      {pushToast && (
+        <div
+          role="status"
+          className={`anim-pop-in fixed top-4 left-1/2 -translate-x-1/2 z-[70] whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold text-white shadow-lg ${
+            pushToast.type === "ok" ? "bg-accent" : "bg-red-600"
+          }`}
+        >
+          {pushToast.text}
+        </div>
+      )}
 
       {/* First-send celebration (candy): confetti + growth loop card */}
       {confettiParticles !== null && (
@@ -1428,7 +1588,7 @@ export default function ChatView({
               </button>
             </div>
             <p className="mt-1 text-sm text-ink/70 leading-relaxed">
-              they won&apos;t know it was you. you&apos;ve got an inbox too — share
+              they won&apos;t know it was you. you&apos;ve got an inbox too share
               your link and get honest messages back.
             </p>
             <Link
@@ -1460,20 +1620,29 @@ export default function ChatView({
             <button
               type="button"
               onClick={async () => {
-                await push.subscribe();
+                const result = await push.subscribe();
                 setShowPushPopup(false);
+                if (result === "subscribed") {
+                  setPushToast({ type: "ok", text: "Notifications on 🔔" });
+                } else if (result === "failed") {
+                  setPushToast({
+                    type: "err",
+                    text: "Couldn't turn on notifications. Try again from the bell icon.",
+                  });
+                }
+                // "denied": the user answered the OS prompt no extra nagging
               }}
               disabled={push.loading}
               className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
             >
-              {push.loading ? "Enabling..." : "Enable notifications"}
+              {push.loading ? "Enabling…" : "Enable notifications"}
             </button>
 
             <button
               type="button"
               onClick={() => {
                 setShowPushPopup(false);
-                // Snooze for 3 days — store current timestamp so the popup can re-appear later
+                // Snooze for 3 days store current timestamp so the popup can re-appear later
                 localStorage.setItem(`push_popup_dismissed_${slug}`, String(Date.now()));
               }}
               className="text-xs text-muted hover:text-slate-300 transition"

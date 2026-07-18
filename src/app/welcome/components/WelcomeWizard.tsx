@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { reportError } from "@/lib/report-error";
+import { WhatsAppIcon, TelegramIcon, XIcon } from "@/components/SocialIcons";
 import {
   validateSlug,
   suggestSlugFromName,
@@ -26,7 +27,7 @@ type Availability =
   | { state: "own" }
   | { state: "taken" }
   | { state: "invalid"; message: string }
-  | { state: "unchecked" }; // network hiccup — server verifies on claim
+  | { state: "unchecked" }; // network hiccup server verifies on claim
 
 const NAME_MAX = 40;
 
@@ -144,7 +145,7 @@ export default function WelcomeWizard({ initialSlug, initialDisplayName }: Props
     if (name !== savedName) body.display_name = name;
     if (validation.slug !== effectiveSlug) body.slug = validation.slug;
 
-    // Nothing changed — just move on.
+    // Nothing changed just move on.
     if (Object.keys(body).length === 0) {
       setStep(2);
       return;
@@ -161,7 +162,7 @@ export default function WelcomeWizard({ initialSlug, initialDisplayName }: Props
 
       if (!res.ok) {
         if (res.status === 409) setAvailability({ state: "taken" });
-        setClaimError(data.error ?? "Couldn't save — please try again.");
+        setClaimError(data.error ?? "Couldn't save please try again.");
         return;
       }
 
@@ -169,7 +170,7 @@ export default function WelcomeWizard({ initialSlug, initialDisplayName }: Props
       if (data.display_name) setSavedName(data.display_name);
       setStep(2);
     } catch {
-      setClaimError("Network error — please try again.");
+      setClaimError("Network error please try again.");
     } finally {
       setClaiming(false);
     }
@@ -191,7 +192,7 @@ export default function WelcomeWizard({ initialSlug, initialDisplayName }: Props
         document.execCommand("copy");
         document.body.removeChild(el);
       } catch {
-        return; // couldn't copy — leave the "Next" link as the way forward
+        return; // couldn't copy leave the "Next" link as the way forward
       }
     }
     setCopied(true);
@@ -220,7 +221,7 @@ export default function WelcomeWizard({ initialSlug, initialDisplayName }: Props
         slug: effectiveSlug,
       });
     }
-    // Proceed regardless — if the flag didn't stick, /welcome shows again
+    // Proceed regardless if the flag didn't stick, /welcome shows again
     // next sign-in (logged above), which beats trapping the user here.
     router.replace(`/${effectiveSlug}/inbox`);
   }, [effectiveSlug, finishing, patchRoom, router]);
@@ -234,21 +235,21 @@ export default function WelcomeWizard({ initialSlug, initialDisplayName }: Props
       });
       finish();
     } catch {
-      // User cancelled the share sheet — stay on this step.
+      // User cancelled the share sheet stay on this step.
     }
   }
 
-  const shareText = encodeURIComponent(`${savedName} wants your anonymous messages — ${link}`);
+  const shareText = encodeURIComponent(`${savedName} wants your anonymous messages ${link}`);
   const platforms = [
-    { name: "WhatsApp", emoji: "💬", href: `https://wa.me/?text=${shareText}` },
+    { name: "WhatsApp", Icon: WhatsAppIcon, href: `https://wa.me/?text=${shareText}` },
     {
       name: "Telegram",
-      emoji: "✈️",
+      Icon: TelegramIcon,
       href: `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(
         `${savedName} wants your anonymous messages`
       )}`,
     },
-    { name: "X", emoji: "𝕏", href: `https://x.com/intent/post?text=${shareText}` },
+    { name: "X", Icon: XIcon, href: `https://x.com/intent/post?text=${shareText}` },
   ];
 
   // ── UI helpers ──────────────────────────────────────────────
@@ -266,7 +267,7 @@ export default function WelcomeWizard({ initialSlug, initialDisplayName }: Props
       case "own":
         return <span className="text-emerald-400">✓ This is your current link</span>;
       case "taken":
-        return <span className="text-red-400">Already taken — try another</span>;
+        return <span className="text-red-400">Already taken try another</span>;
       case "invalid":
         return <span className="text-amber-400">{availability.message}</span>;
       case "unchecked":
@@ -404,7 +405,7 @@ export default function WelcomeWizard({ initialSlug, initialDisplayName }: Props
               <div>
                 <h1 className="text-3xl font-extrabold text-white tracking-tight">Copy your link</h1>
                 <p className="mt-2 text-sm text-muted leading-relaxed">
-                  This is your inbox address — anyone with it can send you an anonymous message.
+                  This is your inbox address anyone with it can send you an anonymous message.
                 </p>
               </div>
             </header>
@@ -453,7 +454,7 @@ export default function WelcomeWizard({ initialSlug, initialDisplayName }: Props
               <div>
                 <h1 className="text-3xl font-extrabold text-white tracking-tight">Share it everywhere</h1>
                 <p className="mt-2 text-sm text-muted leading-relaxed">
-                  Story, bio, group chats — the more you share, the more honest messages you get.
+                  Story, bio, group chats the more you share, the more honest messages you get.
                 </p>
               </div>
             </header>
@@ -480,7 +481,7 @@ export default function WelcomeWizard({ initialSlug, initialDisplayName }: Props
                     onClick={() => finish()}
                     className="flex flex-col items-center gap-1.5 rounded-2xl border border-border bg-surface/60 px-2 py-4 transition hover:bg-surface-light active:scale-[0.98]"
                   >
-                    <span className="text-2xl leading-none">{p.emoji}</span>
+                    <p.Icon className="h-6 w-6 text-white" />
                     <span className="text-xs font-medium text-slate-200">{p.name}</span>
                   </a>
                 ))}

@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type BeforeInstallPromptEvent,
@@ -14,15 +15,18 @@ const SEEN_KEY = "wolow_install_prompt_seen";
 const SHOW_DELAY_MS = 900;
 
 /**
- * One-time install invite — pops up on the user's first opening of the app,
+ * One-time install invite pops up on the user's first opening of the app,
  * inviting them to add Wolow to their home screen.
  *
  * - Chromium: captures `beforeinstallprompt` → native install dialog.
  * - iOS Safari: "Share → Add to Home Screen" instructions (no event exists).
  * - Desktop browsers without install support: never shows.
  * - Already installed (standalone) or shown before: never shows.
+ * - Never shows on the sign-in ("/") or onboarding ("/welcome") screens
+ *   don't ask for commitment before the user has gotten any value.
  */
 export default function InstallPromptPopup() {
+  const pathname = usePathname();
   const [visible, setVisible] = useState(false);
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [installing, setInstalling] = useState(false);
@@ -30,6 +34,8 @@ export default function InstallPromptPopup() {
   const installEventRef = useRef<BeforeInstallPromptEvent | null>(null);
   const shownRef = useRef(false);
   const delayElapsedRef = useRef(false);
+
+  const suppressed = pathname === "/" || pathname.startsWith("/welcome");
 
   const open = useCallback(() => {
     if (shownRef.current) return;
@@ -40,7 +46,7 @@ export default function InstallPromptPopup() {
     try {
       localStorage.setItem(SEEN_KEY, String(Date.now()));
     } catch {
-      // Storage unavailable (private mode) — it may show again next visit.
+      // Storage unavailable (private mode) it may show again next visit.
     }
   }, []);
 
@@ -66,8 +72,8 @@ export default function InstallPromptPopup() {
       installEventRef.current = event as BeforeInstallPromptEvent;
       setInstallEvent(installEventRef.current);
       // Browser announced installability after our delay (e.g. slow desktop
-      // Chrome) — surface the invite now.
-      if (delayElapsedRef.current) open();
+      // Chrome) surface the invite now, unless we're on a suppressed screen.
+      if (delayElapsedRef.current && !suppressed) open();
     };
 
     const onAppInstalled = () => {
@@ -80,20 +86,25 @@ export default function InstallPromptPopup() {
     window.addEventListener("appinstalled", onAppInstalled);
 
     // Mobile devices get the invite even without `beforeinstallprompt`
-    // (iOS Safari never fires it) — with add-to-home-screen instructions.
+    // (iOS Safari never fires it) with add-to-home-screen instructions.
     // Desktop only shows once installability is confirmed by the event.
-    const timer = window.setTimeout(() => {
-      delayElapsedRef.current = true;
-      if (isStandaloneDisplayMode()) return;
-      if (installEventRef.current || isMobileDevice()) open();
-    }, SHOW_DELAY_MS);
+    // Suppressed screens (sign-in, onboarding) never start the timer; the
+    // invite appears on the first eligible screen instead.
+    let timer: number | undefined;
+    if (!suppressed) {
+      timer = window.setTimeout(() => {
+        delayElapsedRef.current = true;
+        if (isStandaloneDisplayMode()) return;
+        if (installEventRef.current || isMobileDevice()) open();
+      }, SHOW_DELAY_MS);
+    }
 
     return () => {
-      window.clearTimeout(timer);
+      if (timer !== undefined) window.clearTimeout(timer);
       window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
       window.removeEventListener("appinstalled", onAppInstalled);
     };
-  }, [open, close]);
+  }, [open, close, suppressed]);
 
   const handleInstall = useCallback(async () => {
     const event = installEventRef.current;

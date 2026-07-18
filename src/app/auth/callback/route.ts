@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { logError } from "@/lib/error-logger";
 
 /**
- * OAuth callback — exchanges the PKCE code for a session, ensures the user
+ * OAuth callback exchanges the PKCE code for a session, ensures the user
  * has a permanent room (creates one on first sign-in), then redirects.
  * Brand-new users are sent to /welcome (onboarding) instead of the inbox.
  */
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
         if (existingRoom) {
           slug = existingRoom.slug;
         } else {
-          // First sign-in — create a permanent room for this user
+          // First sign-in create a permanent room for this user
           const displayName =
             user.user_metadata?.full_name?.split(" ")[0] ??
             user.email?.split("@")[0] ??
@@ -41,7 +41,14 @@ export async function GET(request: NextRequest) {
 
           const { data: newRoom, error: insertError } = await supabase
             .from("rooms")
-            .insert({ slug: nanoid(10), display_name: displayName, user_id: user.id })
+            .insert({
+              slug: nanoid(10),
+              display_name: displayName,
+              user_id: user.id,
+              // owner_token is NOT NULL; provide it explicitly so the insert
+              // works even if migration 030 (column default) hasn't run yet.
+              owner_token: crypto.randomUUID(),
+            })
             .select("slug")
             .single();
 
@@ -63,7 +70,7 @@ export async function GET(request: NextRequest) {
         }
 
         // If a ?next= was passed (e.g. visitor going to /{otherSlug}), honour
-        // it — never hijack a visitor's intent with onboarding. Otherwise,
+        // it never hijack a visitor's intent with onboarding. Otherwise,
         // brand-new owners go through the /welcome onboarding flow.
         const destination = next ?? (isNewUser ? "/welcome" : `/${slug}/inbox`);
         return NextResponse.redirect(`${origin}${destination}`);
@@ -71,6 +78,6 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Something went wrong — send back to the home page
+  // Something went wrong send back to the home page
   return NextResponse.redirect(`${origin}/?auth_error=1`);
 }

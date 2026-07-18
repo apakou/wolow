@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getFunAnonymousEmoji } from "@/lib/fun-anonymous-name";
 import { relativeTime } from "@/lib/relative-time";
 import { generateKeyPair } from "@/lib/crypto/generate-key-pair";
 import { getPrivateKey, storePrivateKey } from "@/lib/crypto/key-storage";
-import { uploadOwnerPublicKey } from "@/lib/crypto/upload-public-key";
+import { uploadOwnerPublicKey, OwnerKeyConflictError } from "@/lib/crypto/upload-public-key";
 import { reportError } from "@/lib/report-error";
 import { usePushNotifications } from "@/lib/push/use-push-notifications";
 import { isInstallPromptOpen } from "@/lib/pwa";
+import BackupPromptModal from "@/components/BackupPromptModal";
 import BottomNav from "@/components/BottomNav";
+import { WhatsAppIcon, TelegramIcon, XIcon } from "@/components/SocialIcons";
 
 type Props = {
   roomId: string;
@@ -23,6 +25,7 @@ type Conversation = {
   label: string;
   message_count: number;
   unread_count: number;
+  blocked?: boolean;
   last_message: {
     content: string;
     is_owner: boolean;
@@ -32,9 +35,18 @@ type Conversation = {
 
 type Filter = "all" | "unread";
 
+// Module-level dedupe for the owner key init. React StrictMode runs effects
+// twice in dev (and remounts happen in prod too); two concurrent runs can both
+// see "no key anywhere", generate different keypairs, and the loser hits the
+// server's 409 rotation guard. Sharing one in-flight promise per slug removes
+// the self-race entirely.
+const ownerKeyInitInFlight = new Map<string, Promise<void>>();
+
 export default function OwnerInbox({ roomId, slug, displayName }: Props) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [shareableLink, setShareableLink] = useState(`/${slug}`);
   const [copied, setCopied] = useState(false);
   const [canShare, setCanShare] = useState(false);
@@ -42,11 +54,19 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
   const shareMenuRef = useRef<HTMLDivElement>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [showPushPopup, setShowPushPopup] = useState(false);
+  const [pushToast, setPushToast] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const loadedRef = useRef(false);
 
   const push = usePushNotifications(slug, "owner");
 
-  const unreadTotal = conversations.reduce((sum, c) => sum + c.unread_count, 0);
-  const filtered = filter === "unread" ? conversations.filter((c) => c.unread_count > 0) : conversations;
+  const unreadTotal = conversations.reduce(
+    (sum, c) => sum + (c.blocked ? 0 : c.unread_count),
+    0
+  );
+  const filtered =
+    filter === "unread"
+      ? conversations.filter((c) => c.unread_count > 0 && !c.blocked)
+      : conversations;
 
   useEffect(() => {
     setShareableLink(`${window.location.origin}/${slug}`);
@@ -54,7 +74,7 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
   }, [slug]);
 
   // Show push popup if not already subscribed/dismissed.
-  // Only when permission is "default" — the sole state where the user hasn't
+  // Only when permission is "default" the sole state where the user hasn't
   // answered the OS prompt yet (see tasks/lessons.md).
   useEffect(() => {
     const dismissedVal = localStorage.getItem(`push_popup_dismissed_${slug}`);
@@ -81,16 +101,26 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
   useEffect(() => {
     if (typeof crypto === "undefined" || !crypto.subtle) return;
     const keyId = `room:${slug}`;
-    (async () => {
+    if (ownerKeyInitInFlight.has(slug)) return; // an identical init is already running
+    const init = (async () => {
       try {
         const existing = await getPrivateKey(keyId);
         if (!existing) {
+          // Silent-rotation footgun guard: if the server ALREADY holds an owner
+          // key (new device / cleared storage), generating a fresh pair here
+          // would orphan every past message. Only generate when the server has
+          // no key at all; otherwise ChatView surfaces the restore-backup path.
+          const res = await fetch(`/api/rooms/${slug}/keys`);
+          if (!res.ok) return; // can't verify server state don't risk it
+          const data = await res.json();
+          if (data.owner_public_key) return; // key lives elsewhere restore, don't rotate
+
           const { publicKey, privateKey } = await generateKeyPair();
-          // Upload FIRST — only store locally if upload succeeds
+          // Upload FIRST only store locally if upload succeeds
           await uploadOwnerPublicKey(slug, publicKey);
           await storePrivateKey(keyId, privateKey);
         } else {
-          // Key exists locally — verify it was uploaded to server, re-upload if not
+          // Key exists locally verify it was uploaded to server, re-upload if not
           const res = await fetch(`/api/rooms/${slug}/keys`);
           if (res.ok) {
             const data = await res.json();
@@ -105,30 +135,73 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
           }
         }
       } catch (err) {
+        if (err instanceof OwnerKeyConflictError) {
+          // Benign race: another writer (second tab or another device) registered
+          // a key between our GET and PUT. Our generated key was never stored
+          // locally, so state stays consistent if this device is genuinely
+          // keyless, ChatView surfaces the restore-backup path.
+          console.debug("[E2EE-Inbox] Owner key already registered elsewhere; skipped local generation");
+          return;
+        }
         console.error("[E2EE-Inbox] Key init error:", err);
+      } finally {
+        ownerKeyInitInFlight.delete(slug);
       }
     })();
+    ownerKeyInitInFlight.set(slug, init);
   }, [slug]);
 
-  // Fetch conversations
-  useEffect(() => {
-    fetch(`/api/rooms/${slug}/conversations`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setConversations(data);
-        }
-        setLoaded(true);
-      })
-      .catch((err: unknown) => {
-        reportError({ message: err instanceof Error ? err.message : "Failed to fetch conversations", endpoint: `/api/rooms/${slug}/conversations`, slug });
-        setLoaded(true);
-      });
+  // Fetch conversations (also used for retry, reconnect and visibility catch-up)
+  const fetchConversations = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/rooms/${slug}/conversations`);
+      const data: unknown = await res.json();
+      if (!res.ok || !Array.isArray(data)) {
+        throw new Error("Failed to fetch conversations");
+      }
+      setConversations(data as Conversation[]);
+      setLoadError(false);
+      setLoaded(true);
+    } catch (err: unknown) {
+      reportError({ message: err instanceof Error ? err.message : "Failed to fetch conversations", endpoint: `/api/rooms/${slug}/conversations`, slug });
+      // Never masquerade a network failure as an empty inbox
+      setLoadError(true);
+      setLoaded(true);
+    }
   }, [slug]);
+
+  useEffect(() => {
+    void fetchConversations();
+  }, [fetchConversations]);
+
+  useEffect(() => {
+    loadedRef.current = loaded;
+  }, [loaded]);
+
+  // Refetch when the tab becomes visible again mobile browsers freeze
+  // WebSockets in the background, so updates can be missed silently.
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible" && loadedRef.current) {
+        void fetchConversations();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [fetchConversations]);
+
+  // Auto-hide the push feedback toast
+  useEffect(() => {
+    if (!pushToast) return;
+    const timer = setTimeout(() => setPushToast(null), 3000);
+    return () => clearTimeout(timer);
+  }, [pushToast]);
 
   // Realtime: listen for new messages in ANY conversation for this room
   useEffect(() => {
     const supabase = createClient();
+    let disposed = false;
+    let hadDrop = false;
     const channel = supabase
       .channel(`inbox:${roomId}`)
       .on(
@@ -149,11 +222,14 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
           setConversations((prev) => {
             const idx = prev.findIndex((c) => c.id === msg.conversation_id);
             if (idx === -1) {
-              // New conversation — refetch the full list to get the label
+              // New conversation refetch the full list to get the label
               fetch(`/api/rooms/${slug}/conversations`)
                 .then((r) => r.json())
                 .then((data) => {
                   if (Array.isArray(data)) setConversations(data);
+                })
+                .catch(() => {
+                  // Non-fatal the next successful fetch will pick it up
                 });
               return prev;
             }
@@ -179,12 +255,30 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
           });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (disposed) return;
+        if (status === "SUBSCRIBED") {
+          if (hadDrop) {
+            hadDrop = false;
+            // Catch up on anything missed while the socket was down
+            void fetchConversations();
+          }
+          setReconnecting(false);
+        } else if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          hadDrop = true;
+          setReconnecting(true);
+        }
+      });
 
     return () => {
+      disposed = true;
       supabase.removeChannel(channel);
     };
-  }, [roomId, slug]);
+  }, [roomId, slug, fetchConversations]);
 
   async function handleCopy() {
     try {
@@ -221,7 +315,7 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
         });
         return;
       } catch {
-        // user cancelled or not supported — fall through to menu
+        // user cancelled or not supported fall through to menu
       }
     }
     // Desktop: toggle the share menu
@@ -242,10 +336,10 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
 
   return (
     <div className="flex flex-col h-dvh bg-app-gradient">
-      {/* Header — compact: title + share action · filter pills */}
+      {/* Header compact: title + share action · filter pills */}
       <header className="shrink-0 bg-header-gradient px-4 pt-5 pb-3 flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="font-display text-lg font-bold text-white">Messages</h1>
+          <h1 className="font-display text-lg font-bold text-white">Inbox</h1>
           <div className="relative" ref={shareMenuRef}>
             <button
               onClick={handleShare}
@@ -260,13 +354,13 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
             {showShareMenu && (
               <div className="absolute right-0 top-full mt-2 z-50 w-48 rounded-2xl border border-border bg-surface/95 backdrop-blur shadow-2xl overflow-hidden">
                 <a
-                  href={`https://wa.me/?text=${encodeURIComponent(`${displayName} wants your anonymous messages — ${shareableLink}`)}`}
+                  href={`https://wa.me/?text=${encodeURIComponent(`${displayName} wants your anonymous messages ${shareableLink}`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setShowShareMenu(false)}
                   className="flex items-center gap-3 px-4 py-3 text-sm text-slate-200 hover:bg-surface-light transition-colors"
                 >
-                  <span className="text-base">💬</span> WhatsApp
+                  <WhatsAppIcon className="w-4 h-4 shrink-0" /> WhatsApp
                 </a>
                 <a
                   href={`https://t.me/share/url?url=${encodeURIComponent(shareableLink)}&text=${encodeURIComponent(`${displayName} wants your anonymous messages`)}`}
@@ -275,16 +369,16 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
                   onClick={() => setShowShareMenu(false)}
                   className="flex items-center gap-3 px-4 py-3 text-sm text-slate-200 hover:bg-surface-light transition-colors"
                 >
-                  <span className="text-base">✈️</span> Telegram
+                  <TelegramIcon className="w-4 h-4 shrink-0" /> Telegram
                 </a>
                 <a
-                  href={`https://x.com/intent/post?text=${encodeURIComponent(`${displayName} wants your anonymous messages — ${shareableLink}`)}`}
+                  href={`https://x.com/intent/post?text=${encodeURIComponent(`${displayName} wants your anonymous messages ${shareableLink}`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setShowShareMenu(false)}
                   className="flex items-center gap-3 px-4 py-3 text-sm text-slate-200 hover:bg-surface-light transition-colors"
                 >
-                  <span className="text-base">𝕏</span> X (Twitter)
+                  <XIcon className="w-4 h-4 shrink-0 text-slate-200" /> X (Twitter)
                 </a>
                 <button
                   type="button"
@@ -337,11 +431,43 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
 
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto">
+        {reconnecting && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="pointer-events-none sticky top-2 z-10 flex justify-center"
+          >
+            <span className="rounded-full border border-amber-500/40 bg-amber-500/20 px-3 py-1 text-[11px] font-medium text-amber-300 backdrop-blur">
+              Reconnecting…
+            </span>
+          </div>
+        )}
         {!loaded ? (
           <div className="px-4 py-4 flex flex-col gap-3">
             {[1, 2, 3].map((i) => (
               <div key={i} className="h-[72px] rounded-2xl animate-pulse bg-surface-light/40" />
             ))}
+          </div>
+        ) : loadError && conversations.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full gap-2 px-8 text-center">
+            <div className="w-12 h-12 rounded-full bg-surface-light flex items-center justify-center mb-2">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-amber-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0 3.75h.008v.008H12v-.008ZM21.75 12a9.75 9.75 0 1 1-19.5 0 9.75 9.75 0 0 1 19.5 0Z" />
+              </svg>
+            </div>
+            <p className="text-slate-300 text-sm font-medium">Couldn&apos;t load your inbox</p>
+            <p className="text-muted text-xs">Check your connection and try again.</p>
+            <button
+              type="button"
+              onClick={() => {
+                setLoaded(false);
+                setLoadError(false);
+                void fetchConversations();
+              }}
+              className="mt-2 rounded-full bg-accent px-5 py-2 text-xs font-semibold text-white transition hover:opacity-90"
+            >
+              Try again
+            </button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 px-8 text-center">
@@ -363,8 +489,10 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
               <a
                 key={conv.id}
                 href={`/${slug}/inbox/${conv.id}`}
-                className="flex items-center gap-3 px-3 py-3 rounded-2xl
-                           hover:bg-surface-light/50 transition-all active:scale-[0.98]"
+                className={`flex items-center gap-3 px-3 py-3 rounded-2xl
+                           hover:bg-surface-light/50 transition-all active:scale-[0.98] ${
+                             conv.blocked ? "opacity-60" : ""
+                           }`}
               >
                 {/* Avatar */}
                 <div className="relative shrink-0">
@@ -373,30 +501,34 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
                       {getFunAnonymousEmoji(conv.id)}
                     </span>
                   </div>
-                  {conv.unread_count > 0 && (
+                  {conv.unread_count > 0 && !conv.blocked && (
                     <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-highlight rounded-full border-2 border-background" />
                   )}
                 </div>
                 {/* Text */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <p className={`text-sm truncate ${conv.unread_count > 0 ? "font-bold text-white" : "font-medium text-slate-200"}`}>
+                    <p className={`text-sm truncate ${conv.unread_count > 0 && !conv.blocked ? "font-bold text-white" : "font-medium text-slate-200"}`}>
                       {conv.label}
                     </p>
                     {conv.last_message && (
-                      <span className={`text-[11px] shrink-0 ml-2 ${conv.unread_count > 0 ? "text-highlight font-medium" : "text-muted"}`}>
+                      <span className={`text-[11px] shrink-0 ml-2 ${conv.unread_count > 0 && !conv.blocked ? "text-highlight font-medium" : "text-muted"}`}>
                         {relativeTime(conv.last_message.created_at)}
                       </span>
                     )}
                   </div>
-                  <p className={`text-xs truncate mt-0.5 ${conv.unread_count > 0 ? "text-slate-300" : "text-muted"}`}>
+                  <p className={`text-xs truncate mt-0.5 ${conv.unread_count > 0 && !conv.blocked ? "text-slate-300" : "text-muted"}`}>
                     {conv.last_message
                       ? `${conv.last_message.is_owner ? "You: " : ""}${conv.last_message.content}`
                       : "No messages yet"}
                   </p>
                 </div>
-                {/* Unread badge */}
-                {conv.unread_count > 0 ? (
+                {/* Blocked pill / unread badge / message count */}
+                {conv.blocked ? (
+                  <span className="shrink-0 text-[11px] font-medium text-red-300 bg-red-950/60 border border-red-500/30 px-2 py-0.5 rounded-full">
+                    Blocked
+                  </span>
+                ) : conv.unread_count > 0 ? (
                   <span className="shrink-0 min-w-[22px] h-[22px] flex items-center justify-center text-[11px] font-bold text-background bg-highlight px-1.5 rounded-full">
                     {conv.unread_count}
                   </span>
@@ -416,6 +548,24 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
       {/* Bottom navigation */}
       <BottomNav slug={slug} />
 
+      {/* Key-backup nudge shown once messages exist, never stacked on the
+          push popup. Snoozes for 7 days; disappears for good after a backup. */}
+      {!showPushPopup && (
+        <BackupPromptModal slug={slug} hasMessages={conversations.length > 0} />
+      )}
+
+      {/* Push subscription feedback toast */}
+      {pushToast && (
+        <div
+          role="status"
+          className={`anim-pop-in fixed top-4 left-1/2 -translate-x-1/2 z-[70] whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold text-white shadow-lg ${
+            pushToast.type === "ok" ? "bg-accent" : "bg-red-600"
+          }`}
+        >
+          {pushToast.text}
+        </div>
+      )}
+
       {/* Push notification popup */}
       {showPushPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
@@ -432,13 +582,22 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
             <button
               type="button"
               onClick={async () => {
-                await push.subscribe();
+                const result = await push.subscribe();
                 setShowPushPopup(false);
+                if (result === "subscribed") {
+                  setPushToast({ type: "ok", text: "Notifications on 🔔" });
+                } else if (result === "failed") {
+                  setPushToast({
+                    type: "err",
+                    text: "Couldn't turn on notifications. Try again later.",
+                  });
+                }
+                // "denied": the user answered the OS prompt no extra nagging
               }}
               disabled={push.loading}
               className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
             >
-              {push.loading ? "Enabling..." : "Enable notifications"}
+              {push.loading ? "Enabling…" : "Enable notifications"}
             </button>
             <button
               type="button"

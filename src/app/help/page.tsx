@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Help & FAQ — Wolow",
+  title: "Help & FAQ Wolow",
   description: "How Wolow's anonymous messaging and end-to-end encryption work.",
 };
 
@@ -13,12 +13,13 @@ const FAQS: Faq[] = [
     q: "How is my anonymity protected when I send a message?",
     a: (
       <>
-        Wolow doesn&apos;t require you to sign in to send a message. The recipient sees a
-        randomly-generated nickname (like <span className="font-mono text-secondary">Curious Otter</span>)
-        instead of any real identity. We don&apos;t attach your IP address, browser
-        fingerprint, or device ID to the messages we store. The same anonymous identity is
-        reused for the duration of a conversation so the recipient can reply, but it has no
-        link to you outside of that thread.
+        You sign in with Google so Wolow can prevent spam, but the person you message{" "}
+        <strong>never sees who you are</strong>. They see a randomly-generated nickname
+        (like <span className="font-mono text-secondary">Curious Otter</span>) instead of
+        your real identity. Your Google account, IP address, and device details are never
+        shown to them. The same anonymous identity is reused for the duration of a
+        conversation so the recipient can reply, but it has no visible link to you outside
+        of that thread.
       </>
     ),
   },
@@ -28,7 +29,7 @@ const FAQS: Faq[] = [
       <>
         Every message is encrypted in your browser before it leaves your device, using a
         public key belonging to the other participant. Only someone holding the matching
-        private key — stored only on the recipient&apos;s device — can decrypt and read the
+        private key stored only on the recipient&apos;s device can decrypt and read the
         message. Wolow&apos;s servers store and relay the ciphertext but cannot read it.
       </>
     ),
@@ -39,7 +40,7 @@ const FAQS: Faq[] = [
       <>
         Your private key is generated in your browser and saved to IndexedDB on your device.
         It is <strong>never sent to our servers</strong>. This is what makes the encryption
-        end-to-end — but it also means losing the key (clearing browser data, switching
+        end-to-end but it also means losing the key (clearing browser data, switching
         devices, browser ITP) means losing access to your messages.
       </>
     ),
@@ -58,14 +59,14 @@ const FAQS: Faq[] = [
     ),
   },
   {
-    q: "I see \u201CEncrypted with an older key\u201D — what happened?",
+    q: "I see \u201CEncrypted with an older key\u201D what happened?",
     a: (
       <>
         That message was encrypted with a previous version of your key (for example, before
         you cleared browser data and a new key was generated). If you saved a backup of the
         older key, restore it from{" "}
         <Link href="/settings" className="text-secondary underline">Settings</Link> to read
-        those older messages. Otherwise, those specific messages are unrecoverable — but
+        those older messages. Otherwise, those specific messages are unrecoverable but
         new messages going forward will be readable normally.
       </>
     ),
@@ -75,9 +76,9 @@ const FAQS: Faq[] = [
     a: (
       <>
         The recipient only sees the anonymous nickname assigned to your conversation. They
-        cannot see your IP, your account (you don&apos;t need one), or any device
+        cannot see your IP, your Google account, or any device
         information from us. They <em>can</em>, of course, infer who you are from{" "}
-        <strong>what you write</strong> — so be mindful of personal details in the text
+        <strong>what you write</strong> so be mindful of personal details in the text
         itself if anonymity matters to you.
       </>
     ),

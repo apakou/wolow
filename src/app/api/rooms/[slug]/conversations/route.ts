@@ -9,7 +9,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 type Params = { params: Promise<{ slug: string }> };
 
-type ConvRow = { id: string; created_at: string; owner_last_read_at: string | null };
+type ConvRow = {
+  id: string;
+  created_at: string;
+  owner_last_read_at: string | null;
+  blocked_at?: string | null;
+};
 
 async function getRoom(slug: string) {
   const supabase = await createClient();
@@ -69,6 +74,7 @@ async function buildConversationResponse(
         created_at: conv.created_at,
         message_count: countMap.get(conv.id) ?? 0,
         unread_count: unreadMap.get(conv.id) ?? 0,
+        blocked: Boolean(conv.blocked_at),
         last_message: latest
           ? {
               content: latest.content.slice(0, 80),
@@ -150,12 +156,30 @@ export async function GET(_req: Request, { params }: Params) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  // Try with owner_last_read_at first; fall back if column doesn't exist yet
-  const { data: conversations, error } = await supabase
-    .from("conversations")
-    .select("id, created_at, owner_last_read_at")
-    .eq("room_id", room.id)
-    .order("created_at", { ascending: true });
+  // Try the full column set first; fall back progressively for databases
+  // that haven't run newer migrations yet (029 blocked_at, 004 owner_last_read_at).
+  let conversations: ConvRow[] | null = null;
+  let error: { message: string } | null = null;
+
+  {
+    const res = await supabase
+      .from("conversations")
+      .select("id, created_at, owner_last_read_at, blocked_at")
+      .eq("room_id", room.id)
+      .order("created_at", { ascending: true });
+    conversations = res.data;
+    error = res.error;
+  }
+
+  if (error?.message?.includes("blocked_at")) {
+    const res = await supabase
+      .from("conversations")
+      .select("id, created_at, owner_last_read_at")
+      .eq("room_id", room.id)
+      .order("created_at", { ascending: true });
+    conversations = res.data;
+    error = res.error;
+  }
 
   if (error?.message?.includes("owner_last_read_at")) {
     const { data: fallback, error: fbErr } = await supabase
@@ -186,8 +210,9 @@ export async function GET(_req: Request, { params }: Params) {
 /**
  * PATCH /api/rooms/[slug]/conversations
  *
- * Marks a conversation as read by the owner.
- * Body: { conversation_id: string }
+ * Owner-only conversation updates.
+ * Body: { conversation_id: string }                    marks as read
+ * Body: { conversation_id: string, blocked: boolean }  blocks/unblocks the sender
  */
 export async function PATCH(req: Request, { params }: Params) {
   const { slug } = await params;
@@ -217,6 +242,23 @@ export async function PATCH(req: Request, { params }: Params) {
 
   if (!conversationId) {
     return NextResponse.json({ error: "conversation_id is required" }, { status: 422 });
+  }
+
+  // Block / unblock takes precedence over mark-as-read
+  const blockedField = (body as Record<string, unknown>).blocked;
+  if (typeof blockedField === "boolean") {
+    const { error } = await supabase
+      .from("conversations")
+      .update({ blocked_at: blockedField ? new Date().toISOString() : null })
+      .eq("id", conversationId)
+      .eq("room_id", room.id);
+
+    if (error) {
+      logError({ message: error.message, endpoint: `/api/rooms/${slug}/conversations`, method: "PATCH", statusCode: 500, slug });
+      return NextResponse.json({ error: "Failed to update conversation" }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
   }
 
   const { error } = await supabase

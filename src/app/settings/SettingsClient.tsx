@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Settings page — single place for owners to manage their E2EE key.
+ * Settings page single place for owners to manage their E2EE key.
  *
  * Sections:
  *   1. Key status (fingerprint, last backup, server/local match check)
@@ -51,6 +51,7 @@ export default function SettingsClient({
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [restorePass, setRestorePass] = useState("");
   const [restoreBusy, setRestoreBusy] = useState(false);
+  const [restoreConfirming, setRestoreConfirming] = useState(false);
   const [restoreMsg, setRestoreMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   // Compute local fingerprint on mount
@@ -83,7 +84,7 @@ export default function SettingsClient({
     try {
       const priv = await getPrivateKey(`room:${slug}`);
       if (!priv) {
-        setBackupMsg({ type: "err", text: "No private key found locally — nothing to back up." });
+        setBackupMsg({ type: "err", text: "No private key found locally nothing to back up." });
         return;
       }
       const { blob, filename } = await exportWrappedKey(priv, backupPass, slug);
@@ -122,6 +123,14 @@ export default function SettingsClient({
       return;
     }
 
+    // Restoring force-rotates the server key an irreversible action.
+    // Require an explicit second confirmation before proceeding.
+    if (!restoreConfirming) {
+      setRestoreConfirming(true);
+      return;
+    }
+    setRestoreConfirming(false);
+
     setRestoreBusy(true);
     try {
       const text = await restoreFile.text();
@@ -142,7 +151,7 @@ export default function SettingsClient({
         type: "ok",
         text: upload.rotated
           ? "Key restored and server updated. Past messages encrypted with the previous key will not be decryptable."
-          : "Key restored — your key is now active.",
+          : "Key restored your key is now active.",
       });
     } catch (err) {
       if (err instanceof ImportKeyError) {
@@ -159,7 +168,7 @@ export default function SettingsClient({
     } finally {
       setRestoreBusy(false);
     }
-  }, [restoreFile, restorePass, slug]);
+  }, [restoreFile, restorePass, restoreConfirming, slug]);
 
   return (
     <div className="flex flex-col h-dvh bg-app-gradient text-slate-100">
@@ -196,7 +205,7 @@ export default function SettingsClient({
             <h2 className="text-sm font-bold text-white">Back up your key</h2>
             <p className="text-xs text-muted mt-1 leading-relaxed">
               Download an encrypted backup of your private key. You&apos;ll need this if you switch
-              browsers or clear your data — without it, all messages become unreadable.
+              browsers or clear your data without it, all messages become unreadable.
               <br />
               <span className="text-slate-300">Wolow never sees your passphrase or your key.</span>
             </p>
@@ -210,7 +219,7 @@ export default function SettingsClient({
                 onChange={(e) => setBackupPass(e.target.value)}
                 disabled={backupBusy || keyMissing}
                 autoComplete="new-password"
-                className="mt-1 w-full bg-surface-light border border-border rounded-xl px-3 py-2.5 text-sm text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary disabled:opacity-50"
+                className="mt-1 w-full bg-surface-light border border-border rounded-xl px-3 py-2.5 text-base text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary disabled:opacity-50"
                 placeholder="A passphrase only you know"
               />
             </label>
@@ -222,7 +231,7 @@ export default function SettingsClient({
                 onChange={(e) => setBackupPass2(e.target.value)}
                 disabled={backupBusy || keyMissing}
                 autoComplete="new-password"
-                className="mt-1 w-full bg-surface-light border border-border rounded-xl px-3 py-2.5 text-sm text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary disabled:opacity-50"
+                className="mt-1 w-full bg-surface-light border border-border rounded-xl px-3 py-2.5 text-base text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary disabled:opacity-50"
                 placeholder="Type it again"
               />
             </label>
@@ -252,7 +261,7 @@ export default function SettingsClient({
             <h2 className="text-sm font-bold text-white">Restore from backup</h2>
             <p className="text-xs text-muted mt-1 leading-relaxed">
               Upload a <code className="text-slate-300">.wolow-key</code> file to install your key on this device.
-              Restoring rotates the key on Wolow&apos;s servers — older messages encrypted with a
+              Restoring rotates the key on Wolow&apos;s servers older messages encrypted with a
               <em> different</em> key cannot be recovered.
             </p>
           </div>
@@ -262,7 +271,10 @@ export default function SettingsClient({
               <input
                 type="file"
                 accept=".wolow-key,application/json"
-                onChange={(e) => setRestoreFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  setRestoreFile(e.target.files?.[0] ?? null);
+                  setRestoreConfirming(false);
+                }}
                 disabled={restoreBusy}
                 className="mt-1 w-full text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-surface-light file:px-3 file:py-2 file:text-xs file:font-medium file:text-white hover:file:bg-surface disabled:opacity-50"
               />
@@ -272,10 +284,13 @@ export default function SettingsClient({
               <input
                 type="password"
                 value={restorePass}
-                onChange={(e) => setRestorePass(e.target.value)}
+                onChange={(e) => {
+                  setRestorePass(e.target.value);
+                  setRestoreConfirming(false);
+                }}
                 disabled={restoreBusy}
                 autoComplete="off"
-                className="mt-1 w-full bg-surface-light border border-border rounded-xl px-3 py-2.5 text-sm text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary disabled:opacity-50"
+                className="mt-1 w-full bg-surface-light border border-border rounded-xl px-3 py-2.5 text-base text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary disabled:opacity-50"
                 placeholder="The passphrase from when you backed up"
               />
             </label>
@@ -284,13 +299,39 @@ export default function SettingsClient({
                 {restoreMsg.text}
               </p>
             )}
-            <button
-              type="submit"
-              disabled={restoreBusy}
-              className="w-full rounded-xl border border-secondary text-secondary px-4 py-2.5 text-sm font-semibold transition hover:bg-accent hover:border-accent hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {restoreBusy ? "Restoring…" : "Restore key"}
-            </button>
+            {restoreConfirming ? (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 flex flex-col gap-3">
+                <p className="text-xs text-amber-300 leading-relaxed">
+                  This replaces the key on Wolow&apos;s servers. Messages encrypted with a{" "}
+                  <em>different</em> key become permanently unreadable. Continue?
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={restoreBusy}
+                    className="flex-1 rounded-xl bg-accent px-3 py-2.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
+                  >
+                    Yes, restore this key
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRestoreConfirming(false)}
+                    disabled={restoreBusy}
+                    className="flex-1 rounded-xl bg-surface-light px-3 py-2.5 text-xs font-semibold text-slate-200 transition hover:bg-surface disabled:opacity-40"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="submit"
+                disabled={restoreBusy}
+                className="w-full rounded-xl border border-secondary text-secondary px-4 py-2.5 text-sm font-semibold transition hover:bg-accent hover:border-accent hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {restoreBusy ? "Restoring…" : "Restore key"}
+              </button>
+            )}
           </form>
         </section>
 

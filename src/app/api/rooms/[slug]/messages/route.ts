@@ -241,6 +241,23 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: "conversation_id is required" }, { status: 422 });
   }
 
+  // Blocked conversations reject every new message (owner-initiated block).
+  // If the blocked_at column doesn't exist yet (migration 029 not applied),
+  // the select errors and the check is skipped the RPC still validates the
+  // conversation itself.
+  const { data: convRow } = await supabase
+    .from("conversations")
+    .select("blocked_at")
+    .eq("id", conversationId)
+    .eq("room_id", room.id)
+    .single();
+  if (convRow?.blocked_at) {
+    return NextResponse.json(
+      { error: "You can't send messages in this conversation." },
+      { status: 403 }
+    );
+  }
+
   const { data, error } = await supabase.rpc("send_message_secure", {
     p_slug: slug,
     p_conversation_id: conversationId,

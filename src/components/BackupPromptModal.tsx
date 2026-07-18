@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { getLastBackup } from "@/lib/crypto/last-backup";
 
 const SNOOZE_KEY_PREFIX = "wolow:backup-prompt-snoozed:";
@@ -25,7 +26,7 @@ export default function BackupPromptModal({ slug, hasMessages }: Props) {
     if (!hasMessages) return;
     if (typeof window === "undefined") return;
 
-    // Already backed up — never prompt
+    // Already backed up never prompt
     if (getLastBackup(slug)) return;
 
     // Snoozed recently?
@@ -64,12 +65,12 @@ export default function BackupPromptModal({ slug, hasMessages }: Props) {
           Download a passphrase-protected backup file (about 1 KB) and keep it somewhere safe.
         </p>
 
-        <a
+        <Link
           href="/settings"
           className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white text-center transition hover:opacity-90"
         >
           Back up now
-        </a>
+        </Link>
 
         <button
           type="button"

@@ -24,7 +24,7 @@ const baloo = Baloo_2({
 
 export const metadata: Metadata = {
   title: "Wolow",
-  description: "Anonymous chat rooms — share your link, get honest messages",
+  description: "Anonymous chat rooms share your link, get honest messages",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
@@ -44,7 +44,8 @@ export const viewport: Viewport = {
   themeColor: "#140A26",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // No maximumScale: pinch-zoom must stay available (WCAG 1.4.4). iOS
+  // focus-zoom is avoided by keeping text inputs at 16px (text-base).
   viewportFit: "cover",
 };
 

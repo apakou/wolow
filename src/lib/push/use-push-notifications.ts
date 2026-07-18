@@ -14,6 +14,9 @@ function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
   return arr.buffer as ArrayBuffer;
 }
 
+/** Outcome of a subscribe attempt, used for user-facing feedback */
+export type PushSubscribeResult = "subscribed" | "denied" | "failed";
+
 type PushState = {
   /** Browser supports Web Push */
   supported: boolean;
@@ -24,7 +27,7 @@ type PushState = {
   /** Loading state during subscribe/unsubscribe */
   loading: boolean;
   /** Subscribe to push notifications */
-  subscribe: () => Promise<void>;
+  subscribe: () => Promise<PushSubscribeResult>;
   /** Unsubscribe from push notifications */
   unsubscribe: () => Promise<void>;
 };
@@ -76,20 +79,20 @@ export function usePushNotifications(
     if (!supported || isSubscribed || loading) return;
     if (permission !== "granted") return;
     void subscribe();
-    // subscribe is stable enough — guarded by `loading` flag inside.
+    // subscribe is stable enough guarded by `loading` flag inside.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supported, isSubscribed, permission]);
 
-  const subscribe = useCallback(async () => {
-    if (!supported || loading) return;
+  const subscribe = useCallback(async (): Promise<PushSubscribeResult> => {
+    if (!supported || loading) return "failed";
     setLoading(true);
 
     try {
       const perm = await Notification.requestPermission();
       setPermission(perm);
       if (perm !== "granted") {
-        setLoading(false);
-        return;
+        // Covers both explicit denial and dismissing the OS prompt
+        return "denied";
       }
 
       const reg = await navigator.serviceWorker.ready;
@@ -100,7 +103,7 @@ export function usePushNotifications(
 
       const keys = sub.toJSON().keys ?? {};
 
-      await fetch(`/api/rooms/${encodeURIComponent(slug)}/push-subscription`, {
+      const res = await fetch(`/api/rooms/${encodeURIComponent(slug)}/push-subscription`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -111,9 +114,18 @@ export function usePushNotifications(
         }),
       });
 
+      if (!res.ok) {
+        // Server rejected the subscription clean up the browser-side sub so
+        // "subscribed" in the UI never diverges from what the server can send to.
+        await sub.unsubscribe().catch(() => {});
+        return "failed";
+      }
+
       setIsSubscribed(true);
+      return "subscribed";
     } catch {
-      // Permission denied or network failure — UI stays in unsubscribed state
+      // Push registration or network failure UI stays in unsubscribed state
+      return "failed";
     } finally {
       setLoading(false);
     }
@@ -139,7 +151,7 @@ export function usePushNotifications(
 
       setIsSubscribed(false);
     } catch {
-      // Swallow — worst case the subscription stays
+      // Swallow worst case the subscription stays
     } finally {
       setLoading(false);
     }

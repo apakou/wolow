@@ -30,13 +30,26 @@ export default async function ConversationPage({ params }: Props) {
     redirect(`/${slug}`);
   }
 
-  // Verify conversation belongs to this room
-  const { data: conversation } = await supabase
+  // Verify conversation belongs to this room (blocked_at falls back for
+  // databases missing migration 029)
+  let conversation: { id: string; blocked_at: string | null } | null = null;
+  const { data: convData } = await supabase
     .from("conversations")
-    .select("id")
+    .select("id, blocked_at")
     .eq("id", conversationId)
     .eq("room_id", room.id)
     .single();
+  conversation = convData ?? null;
+
+  if (!conversation) {
+    const { data: fallback } = await supabase
+      .from("conversations")
+      .select("id")
+      .eq("id", conversationId)
+      .eq("room_id", room.id)
+      .single();
+    conversation = fallback ? { id: fallback.id, blocked_at: null } : null;
+  }
 
   if (!conversation) {
     notFound();
@@ -51,6 +64,7 @@ export default async function ConversationPage({ params }: Props) {
       displayName={room.display_name}
       conversationId={conversationId}
       conversationLabel={label}
+      initiallyBlocked={Boolean(conversation.blocked_at)}
     />
   );
 }

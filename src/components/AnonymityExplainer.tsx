@@ -8,7 +8,7 @@
  * Dismissal is sticky per-conversation (localStorage).
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { getFunAnonymousName, getFunAnonymousEmoji } from "@/lib/fun-anonymous-name";
 
@@ -20,13 +20,12 @@ type Props = {
 };
 
 export default function AnonymityExplainer({ conversationId, recipientName }: Props) {
-  const [dismissed, setDismissed] = useState(true); // default true to avoid flash before localStorage check
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const key = `${DISMISS_PREFIX}${conversationId}`;
-    setDismissed(window.localStorage.getItem(key) === "1");
-  }, [conversationId]);
+  // Lazy init: only rendered client-side (after the conversation is created),
+  // so localStorage is readable during the first render no flash, no effect.
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem(`${DISMISS_PREFIX}${conversationId}`) === "1";
+  });
 
   if (dismissed) return null;
 
