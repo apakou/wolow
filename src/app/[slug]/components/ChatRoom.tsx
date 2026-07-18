@@ -33,14 +33,11 @@ export default function ChatRoom({ roomId, slug, displayName }: Props) {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-dvh bg-app-gradient text-muted text-sm">
-        <div className="text-center flex flex-col items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-surface-light flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-red-400">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-            </svg>
-          </div>
-          <p className="text-slate-300">Something went wrong. Please refresh.</p>
+      <div className="flex items-center justify-center h-dvh bg-app-gradient px-6">
+        <div className="anim-pop-in w-full max-w-sm rounded-[28px] bg-surface border border-border p-6 text-center flex flex-col items-center gap-3 shadow-2xl">
+          <div className="text-3xl" aria-hidden="true">😵‍💫</div>
+          <p className="font-display text-lg font-bold text-white">oops, something broke</p>
+          <p className="text-sm text-muted">Please refresh the page to try again.</p>
         </div>
       </div>
     );
@@ -60,7 +57,8 @@ export default function ChatRoom({ roomId, slug, displayName }: Props) {
       slug={slug}
       displayName={displayName}
       conversationId={conversationId}
-      inputPlaceholder={`Send ${displayName} an anonymous message…`}
+      variant="candy"
+      inputPlaceholder="say anything… it's anonymous 👀"
       aboveComposer={
         <AnonymityExplainer conversationId={conversationId} recipientName={displayName} />
       }

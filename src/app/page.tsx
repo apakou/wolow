@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getRoomByUserId } from "@/lib/owned-room";
 import SignInWithGoogle from "./components/SignInWithGoogle";
 
 type Props = { searchParams: Promise<{ next?: string; auth_error?: string }> };
@@ -11,14 +12,10 @@ export default async function Home({ searchParams }: Props) {
   } = await supabase.auth.getUser();
 
   if (user) {
-    const { data: room } = await supabase
-      .from("rooms")
-      .select("slug")
-      .eq("user_id", user.id)
-      .single();
+    const room = await getRoomByUserId(user.id);
 
     if (room) {
-      redirect(`/${room.slug}/inbox`);
+      redirect(room.needsOnboarding ? "/welcome" : `/${room.slug}/inbox`);
     }
     // No room yet — auth callback will create one; show sign-in again
   }

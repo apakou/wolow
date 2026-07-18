@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
+import { getRoomBySlug } from "@/lib/owned-room";
 import OwnerInbox from "./components/OwnerInbox";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -17,15 +18,17 @@ export default async function InboxPage({ params }: Props) {
     redirect(`/?next=/${slug}/inbox`);
   }
 
-  const { data: room } = await supabase
-    .from("rooms")
-    .select("id, slug, display_name, user_id")
-    .eq("slug", slug)
-    .single();
+  const room = await getRoomBySlug(slug);
 
   if (!room || room.user_id !== user.id) {
     // Authenticated but not the owner of this room
     redirect(`/${slug}`);
+  }
+
+  if (room.needsOnboarding) {
+    // Finish onboarding first — this also guarantees slug changes happen
+    // before OwnerInbox generates E2EE keys (keyed by room:{slug}).
+    redirect("/welcome");
   }
 
   return (

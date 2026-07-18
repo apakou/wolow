@@ -1,10 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { nanoid } from "nanoid";
 import { createClient } from "@/lib/supabase/server";
+import { logError } from "@/lib/error-logger";
 
 /**
  * OAuth callback — exchanges the PKCE code for a session, ensures the user
  * has a permanent room (creates one on first sign-in), then redirects.
+ * Brand-new users are sent to /welcome (onboarding) instead of the inbox.
  */
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -26,6 +28,7 @@ export async function GET(request: NextRequest) {
           .single();
 
         let slug: string;
+        let isNewUser = false;
 
         if (existingRoom) {
           slug = existingRoom.slug;
@@ -43,14 +46,26 @@ export async function GET(request: NextRequest) {
             .single();
 
           if (insertError || !newRoom) {
+            // Never swallow DB errors on auth routes (tasks/lessons.md).
+            const message = insertError?.message ?? "Room insert returned no row";
+            console.error("[auth/callback] First sign-in room creation failed:", message);
+            logError({
+              message: `First sign-in room creation failed: ${message}`,
+              endpoint: "/auth/callback",
+              method: "GET",
+              statusCode: 500,
+            });
             return NextResponse.redirect(`${origin}/?auth_error=1`);
           }
 
           slug = newRoom.slug;
+          isNewUser = true;
         }
 
-        // If a ?next= was passed (e.g. visitor going to /{otherSlug}), honour it
-        const destination = next ?? `/${slug}/inbox`;
+        // If a ?next= was passed (e.g. visitor going to /{otherSlug}), honour
+        // it — never hijack a visitor's intent with onboarding. Otherwise,
+        // brand-new owners go through the /welcome onboarding flow.
+        const destination = next ?? (isNewUser ? "/welcome" : `/${slug}/inbox`);
         return NextResponse.redirect(`${origin}${destination}`);
       }
     }

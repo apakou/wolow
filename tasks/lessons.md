@@ -53,3 +53,38 @@
 **Rule**:
 - When automating a previously-manual flow, grep the codebase for the old call-to-action copy and either delete it or rewrite it to describe the new automatic behaviour. The empty-state of an auto-created resource should explain *why* the resource is missing, not offer a phantom action.
 - Empty-states for auto-provisioned resources usually indicate an error in the provisioning step (here: the callback INSERT failed). Surface that as an error message + recovery hint (sign out / retry), not as a "create" CTA.
+
+## 2026-07-18 — CREATE OR REPLACE FUNCTION with new params = overload, not replace
+
+**Mistake**: Migration 026 "extended" `set_owner_public_key` by adding `p_fingerprint` and `p_mark_rotated` params via `CREATE OR REPLACE FUNCTION`. In Postgres a function's identity is its name + argument types, so this *added a second overload* instead of replacing the 019/025 version. PostgREST then rejected every 3-named-arg RPC call with PGRST203 ("Could not choose the best candidate function") → `PUT /api/rooms/[slug]/keys` returned 500 "Failed to store key" in production.
+
+**Rule**:
+- When changing a function's parameter list in a migration, `DROP FUNCTION IF EXISTS fn(old, arg, types);` first, in the same migration. `CREATE OR REPLACE` only replaces an *identical* signature.
+- When calling Supabase RPCs that have optional/defaulted params, pass **all** params explicitly from app code — a fully-named call uniquely selects one candidate and is immune to leftover overloads.
+- Symptom signature: RPC worked before a "signature extension" migration, now fails with PGRST203, and `information_schema.routines`/`\df` shows the function name twice.
+- Diagnose hosted-DB state cheaply with anon-key REST probes: select the new column filtered by a nil UUID (`?select=col&id=eq.00000000-...`) to check columns, and call the RPC with a nil room id to check function resolution without touching data.
+
+## 8. Never `git stash` a dirty tree to check whether an issue is pre-existing
+
+**Mistake (near-miss)**: To verify a lint error predated my edits, I ran `git stash` + `git stash pop` — the tree also held the user's unrelated uncommitted work (icons, other routes). A pop conflict would have entangled or lost their changes.
+
+**Rule**:
+- To compare against the last commit, read it directly: `git show HEAD:path/to/file` (pipe to grep/diff). Zero mutation, zero risk.
+- Reserve `stash` for my own short-lived work, never a shared/dirty tree.
+
+## 9. A theme direction approved in the abstract can die on first render — ship one screen first
+
+**Mistake**: User approved "vivid candy gradient on the visitor page, dark everywhere else" from a written proposal. Built it across the whole viral loop; on first real screenshot the split felt like a different app and was reverted to dark-base + accents.
+
+**Rule**:
+- For any *visual direction fork* (theme split, new palette, new type scale), implement the smallest visible slice and get eyes on a real render before propagating.
+- Be suspicious of two-theme splits when the same user crosses both sides in one session (owner ↔ visitor): bias to one base theme + accent-level differentiation.
+- Structure styling as a variant/lookup map from the start — this correction was a repaint of ~40 class strings, not a rebuild, because dark/candy never forked structurally.
+
+## 10. Never run `next build` while the user's dev server is running on the same .next
+
+**Mistake**: Ran `npx next build` for verification while `next dev` was live. The shared `.next` dir corrupted the dev server's Tailwind scan — it kept emitting stale CSS with new JS, making the feature look broken (unstyled textarea, missing gradient) and costing a debugging round-trip.
+
+**Rule**:
+- Before any `next build`, check for a running dev server (`ps aux | grep "next dev"`). If one is running: skip the build — `tsc --noEmit` + eslint are safe verification; or ask the user to stop the server first.
+- Symptom signature: new markup/copy visible but new classes unstyled; compiled CSS chunk timestamps newer than source edits yet missing the new rules → clobbered dev cache, fix with stop + `rm -rf .next` + restart.

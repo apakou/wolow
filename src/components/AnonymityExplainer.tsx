@@ -54,7 +54,7 @@ export default function AnonymityExplainer({ conversationId, recipientName }: Pr
         <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
           They&apos;ll see you as <span className="font-semibold text-white">{previewName}</span>.
           Your IP and device aren&apos;t shared. Messages are end-to-end encrypted.{" "}
-          <Link href="/help" target="_blank" className="text-accent underline underline-offset-2">
+          <Link href="/help" target="_blank" className="text-secondary underline underline-offset-2">
             Learn more
           </Link>
         </p>

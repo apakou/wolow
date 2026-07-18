@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 
 export default function SignInWithGoogle({ next }: { next?: string }) {
@@ -21,27 +22,49 @@ export default function SignInWithGoogle({ next }: { next?: string }) {
     <main className="min-h-screen bg-app-gradient flex items-center justify-center px-4">
       <div className="w-full max-w-sm flex flex-col gap-8">
         {/* Logo / branding */}
-        <div className="text-center flex flex-col items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-accent flex items-center justify-center">
-            <svg width="32" height="32" viewBox="0 0 88 96" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M30.4 77.152C26.304 77.152 23.104 75.8293 20.8 73.184C18.5813 70.4533 17.0453 66.1013 16.192 60.128L13.504 41.696C13.4187 41.0133 13.248 40.544 12.992 40.288C12.736 40.032 12.352 39.904 11.84 39.904H8.384L8 38.496C9.70667 36.96 11.7547 35.7653 14.144 34.912C16.5333 33.9733 18.88 33.504 21.184 33.504C22.464 33.504 23.36 33.888 23.872 34.656C24.4693 35.424 24.9387 36.9173 25.28 39.136L28.608 62.176C29.2053 66.3573 29.888 69.216 30.656 70.752C31.424 72.288 32.576 73.056 34.112 73.056C36.5013 73.056 38.3787 71.6053 39.744 68.704C41.1947 65.7173 41.92 61.792 41.92 56.928C41.92 51.9787 41.28 46.9013 40 41.696C39.8293 41.0133 39.6587 40.544 39.488 40.288C39.3173 40.032 38.9333 39.904 38.336 39.904H35.008L34.624 38.496C36.2453 36.96 38.2507 35.7653 40.64 34.912C43.0293 33.9733 45.4187 33.504 47.808 33.504C49.0027 33.504 49.8987 33.9307 50.496 34.784C51.0933 35.552 51.52 37.0027 51.776 39.136L54.976 61.536C55.6587 66.144 56.384 69.216 57.152 70.752C58.0053 72.288 59.0293 73.056 60.224 73.056C62.528 73.056 64.3627 71.3493 65.728 67.936C67.1787 64.4373 67.904 59.9147 67.904 54.368C67.904 50.6133 67.52 47.3707 66.752 44.64C66.0693 41.824 64.9173 39.3493 63.296 37.216L62.272 35.808L63.168 34.784L73.92 33.504C74.176 36.832 74.304 39.776 74.304 42.336C74.304 53.2587 72.7253 61.792 69.568 67.936C66.496 74.08 62.0587 77.152 56.256 77.152C52.7573 77.152 50.112 76.256 48.32 74.464C46.528 72.672 45.0347 69.3867 43.84 64.608C42.1333 72.9707 37.6533 77.152 30.4 77.152Z" fill="white"/>
-            </svg>
-          </div>
+        <div className="text-center flex flex-col items-center gap-5 anim-rise-in">
+          <Image
+            src="/wolow.png"
+            alt="Wolow"
+            width={188}
+            height={50}
+            priority
+            className="h-[50px] w-auto"
+          />
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">
-              Send me anonymous messages
+            <h1 className="text-3xl font-extrabold text-white tracking-tight">
+              Get honest, anonymous messages
             </h1>
             <p className="mt-2 text-sm text-muted">
-              Create a link and share it — anyone can message you anonymously.
+              Claim your link, share it anywhere — friends message you anonymously.
             </p>
           </div>
         </div>
 
-        <div className="flex flex-col gap-3">
+        {/* Teaser bubbles */}
+        <div className="flex flex-col gap-2.5 anim-rise-in-delayed" aria-hidden>
+          <div className="flex items-end gap-2 self-start max-w-[85%]">
+            <div className="w-8 h-8 shrink-0 rounded-full bg-gradient-to-br from-white/20 to-white/5 backdrop-blur-md border border-white/30 flex items-center justify-center shadow-lg">
+              <span className="text-base leading-none">🐙</span>
+            </div>
+            <div className="anim-float bg-surface-light rounded-2xl rounded-bl-md px-3.5 py-2.5 text-sm text-slate-200">
+              be honest… what do you really think of me? 👀
+            </div>
+          </div>
+          <div
+            className="anim-float self-end max-w-[85%] bg-accent rounded-2xl rounded-br-md px-3.5 py-2.5 text-sm text-white"
+            style={{ animationDelay: "1.2s" }}
+          >
+            ok, you asked for it 😂
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 anim-rise-in-delayed">
           <button
             onClick={handleSignIn}
             className="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-50
-                       text-gray-900 font-semibold py-3.5 px-6 rounded-2xl transition-all duration-150 text-sm"
+                       text-gray-900 font-semibold py-3.5 px-6 rounded-2xl transition-all duration-150 text-sm
+                       active:scale-[0.98]"
           >
             {/* Google logo */}
             <svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">

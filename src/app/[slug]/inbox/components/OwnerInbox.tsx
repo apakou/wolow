@@ -9,6 +9,8 @@ import { getPrivateKey, storePrivateKey } from "@/lib/crypto/key-storage";
 import { uploadOwnerPublicKey } from "@/lib/crypto/upload-public-key";
 import { reportError } from "@/lib/report-error";
 import { usePushNotifications } from "@/lib/push/use-push-notifications";
+import { isInstallPromptOpen } from "@/lib/pwa";
+import BottomNav from "@/components/BottomNav";
 
 type Props = {
   roomId: string;
@@ -51,7 +53,9 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
     setCanShare(!!navigator.share);
   }, [slug]);
 
-  // Show push popup if not already subscribed/dismissed
+  // Show push popup if not already subscribed/dismissed.
+  // Only when permission is "default" — the sole state where the user hasn't
+  // answered the OS prompt yet (see tasks/lessons.md).
   useEffect(() => {
     const dismissedVal = localStorage.getItem(`push_popup_dismissed_${slug}`);
     const dismissedTs = parseInt(dismissedVal ?? "", 10);
@@ -61,10 +65,13 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
     if (
       push.supported &&
       !push.isSubscribed &&
-      push.permission !== "denied" &&
+      push.permission === "default" &&
       !isDismissed
     ) {
-      const timer = setTimeout(() => setShowPushPopup(true), 1500);
+      const timer = setTimeout(() => {
+        // Don't stack on top of the one-time install invite popup
+        if (!isInstallPromptOpen()) setShowPushPopup(true);
+      }, 1500);
       return () => clearTimeout(timer);
     }
   }, [push.supported, push.isSubscribed, push.permission, slug]);
@@ -235,32 +242,20 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
 
   return (
     <div className="flex flex-col h-dvh bg-app-gradient">
-      {/* Header */}
-      <header className="shrink-0 bg-header-gradient px-4 pt-5 pb-4 flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold text-white">Messages</h1>
-          <span className="text-xs text-slate-400 bg-surface-light/50 px-2.5 py-1 rounded-full">{displayName}</span>
-        </div>
-
-        {/* Share bar */}
-        <div className="flex gap-2">
-          <input
-            readOnly
-            value={shareableLink}
-            onFocus={(e) => e.target.select()}
-            className="flex-1 min-w-0 bg-surface/60 backdrop-blur border border-border rounded-xl px-3 py-2
-                       text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-accent cursor-text"
-          />
+      {/* Header — compact: title + share action · filter pills */}
+      <header className="shrink-0 bg-header-gradient px-4 pt-5 pb-3 flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="font-display text-lg font-bold text-white">Messages</h1>
           <div className="relative" ref={shareMenuRef}>
             <button
               onClick={handleShare}
-              className="shrink-0 text-xs font-medium bg-accent text-white
-                         px-3.5 py-2 rounded-xl transition-all hover:opacity-90 flex items-center gap-1.5"
+              className="btn-squish shrink-0 text-xs font-semibold bg-accent text-white
+                         px-4 py-2 rounded-full transition-all hover:opacity-90 flex items-center gap-1.5"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
                 <path d="M13 4.5a2.5 2.5 0 1 1 .702 1.737L6.97 9.604a2.518 2.518 0 0 1 0 .792l6.733 3.367a2.5 2.5 0 1 1-.671 1.341l-6.733-3.367a2.5 2.5 0 1 1 0-3.474l6.733-3.366A2.52 2.52 0 0 1 13 4.5Z" />
               </svg>
-              Share
+              Share my link
             </button>
             {showShareMenu && (
               <div className="absolute right-0 top-full mt-2 z-50 w-48 rounded-2xl border border-border bg-surface/95 backdrop-blur shadow-2xl overflow-hidden">
@@ -304,11 +299,19 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
                 </button>
               </div>
             )}
+            {copied && (
+              <div
+                role="status"
+                className="anim-pop-in pointer-events-none absolute right-0 top-full mt-2 z-50 whitespace-nowrap rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-white shadow-lg"
+              >
+                copied! 🎉
+              </div>
+            )}
           </div>
         </div>
 
         {/* Filter pills */}
-        <div className="flex gap-2 mt-1">
+        <div className="flex gap-2">
           <button
             onClick={() => setFilter("all")}
             className={`text-xs font-medium px-4 py-1.5 rounded-full transition-all ${
@@ -329,12 +332,6 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
           >
             Unread {unreadTotal > 0 && unreadTotal}
           </button>
-          <a
-            href="/sent"
-            className="text-xs font-medium px-4 py-1.5 rounded-full bg-surface-light/50 text-slate-400 hover:text-slate-200 transition-all"
-          >
-            Sent
-          </a>
         </div>
       </header>
 
@@ -377,7 +374,7 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
                     </span>
                   </div>
                   {conv.unread_count > 0 && (
-                    <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-accent rounded-full border-2 border-background" />
+                    <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-highlight rounded-full border-2 border-background" />
                   )}
                 </div>
                 {/* Text */}
@@ -387,7 +384,7 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
                       {conv.label}
                     </p>
                     {conv.last_message && (
-                      <span className={`text-[11px] shrink-0 ml-2 ${conv.unread_count > 0 ? "text-accent font-medium" : "text-muted"}`}>
+                      <span className={`text-[11px] shrink-0 ml-2 ${conv.unread_count > 0 ? "text-highlight font-medium" : "text-muted"}`}>
                         {relativeTime(conv.last_message.created_at)}
                       </span>
                     )}
@@ -400,7 +397,7 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
                 </div>
                 {/* Unread badge */}
                 {conv.unread_count > 0 ? (
-                  <span className="shrink-0 min-w-[22px] h-[22px] flex items-center justify-center text-[11px] font-bold text-white bg-accent px-1.5 rounded-full">
+                  <span className="shrink-0 min-w-[22px] h-[22px] flex items-center justify-center text-[11px] font-bold text-background bg-highlight px-1.5 rounded-full">
                     {conv.unread_count}
                   </span>
                 ) : (
@@ -415,12 +412,16 @@ export default function OwnerInbox({ roomId, slug, displayName }: Props) {
           </div>
         )}
       </div>
+
+      {/* Bottom navigation */}
+      <BottomNav slug={slug} />
+
       {/* Push notification popup */}
       {showPushPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
-          <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-[#1a1a2e] shadow-2xl p-6 flex flex-col items-center gap-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-surface shadow-2xl p-6 flex flex-col items-center gap-4 animate-in fade-in zoom-in-95 duration-200">
             <div className="w-14 h-14 rounded-full bg-accent/15 flex items-center justify-center">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 text-accent">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 text-secondary">
                 <path fillRule="evenodd" d="M5.25 9a6.75 6.75 0 0 1 13.5 0v.75c0 2.123.8 4.057 2.118 5.52a.75.75 0 0 1-.573 1.23H3.705a.75.75 0 0 1-.573-1.23A8.973 8.973 0 0 0 5.25 9.75V9ZM8.159 18.846c.069.216.16.424.271.62a3.598 3.598 0 0 0 7.14 0 3.18 3.18 0 0 0 .27-.62H8.16Z" clipRule="evenodd" />
               </svg>
             </div>

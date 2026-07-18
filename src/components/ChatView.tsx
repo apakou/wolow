@@ -11,9 +11,14 @@ import { createClient } from "@/lib/supabase/client";
 import { relativeTime } from "@/lib/relative-time";
 import { useE2EE } from "@/lib/crypto/use-e2ee";
 import { usePushNotifications } from "@/lib/push/use-push-notifications";
+import { isInstallPromptOpen } from "@/lib/pwa";
 import { reportError } from "@/lib/report-error";
 import { isDecryptError, type DecryptErrorReason } from "@/lib/crypto/decrypt-errors";
 import DecryptErrorBubble from "@/components/DecryptErrorBubble";
+import Link from "next/link";
+import Confetti, { makeConfettiParticles, type ConfettiParticle } from "@/components/Confetti";
+import PromptCard from "@/components/PromptCard";
+import { STARTER_TEMPLATES, nextRandomIndex } from "@/lib/prompts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -65,6 +70,10 @@ type Props = {
   /** Extra content rendered just above the composer (e.g. anonymity explainer) */
   aboveComposer?: React.ReactNode;
   inputPlaceholder?: string;
+  /** Visual treatment — "dark" (plain) or "candy" (playful). Both dark-based. */
+  variant?: ChatVariant;
+  /** Templates the 🎲 dice inserts into the composer (candy variant) */
+  starterTemplates?: readonly string[];
 };
 
 const MAX_LENGTH = 1000;
@@ -72,24 +81,106 @@ const REACTION_OPTIONS = ["❤️", "👍", "😂", "🔥"];
 const LONG_PRESS_MS = 350;
 const SWIPE_REPLY_PX = 56;
 
+// ─── Visual variants ─────────────────────────────────────────────────────────
+// "dark" is the owner-side default — its class strings are the pre-variant
+// originals, verbatim. "candy" is the playful NGL-style visitor treatment:
+// vivid gradient, white cards, chunky display type, squishy buttons.
+
+export type ChatVariant = "dark" | "candy";
+
+const STYLES: Record<
+  ChatVariant,
+  {
+    root: string;
+    header: string;
+    headerTitle: string;
+    bubbleMine: string;
+    bubbleTheirs: string;
+    reactionPillActive: string;
+    reactionPillIdle: string;
+    picker: string;
+    pickerBtn: string;
+    timeLabel: string;
+    newMsgToast: string;
+    skeletonBubble: string;
+    composer: string;
+    errorText: string;
+    replyBar: string;
+    replyLabel: string;
+    replyText: string;
+    replyCancel: string;
+    input: string;
+    sendBtn: string;
+    counter: string;
+    statusMuted: string;
+    statusLink: string;
+  }
+> = {
+  dark: {
+    root: "flex h-dvh flex-col overflow-hidden overscroll-none bg-app-gradient",
+    header: "shrink-0 bg-header-gradient border-b border-border",
+    headerTitle: "text-base font-bold text-white truncate",
+    bubbleMine: "bg-accent text-white rounded-br-md",
+    bubbleTheirs: "bg-surface-light text-slate-100 rounded-bl-md border border-border",
+    reactionPillActive: "bg-accent/20 border-accent text-white",
+    reactionPillIdle: "bg-surface-light/60 border-border text-slate-200 hover:bg-surface-light",
+    picker: "border-border bg-surface/95",
+    pickerBtn: "hover:bg-surface-light focus-visible:ring-secondary",
+    timeLabel: "text-[11px] text-muted px-1 select-none",
+    newMsgToast: "bg-accent text-white",
+    skeletonBubble: "bg-surface-light/50",
+    composer:
+      "shrink-0 border-t border-border bg-surface/80 backdrop-blur-lg px-4 py-3 flex flex-col gap-2",
+    errorText: "text-xs text-red-400",
+    replyBar:
+      "flex items-start justify-between gap-2 rounded-xl border border-border bg-surface-light/70 px-3 py-2",
+    replyLabel: "text-[11px] uppercase tracking-wide text-secondary",
+    replyText: "text-xs text-slate-200 truncate",
+    replyCancel: "shrink-0 text-muted hover:text-white transition",
+    input:
+      "flex-1 resize-none bg-surface-light border border-border rounded-2xl px-4 py-3 text-sm text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent transition max-h-32 overflow-y-auto",
+    sendBtn:
+      "shrink-0 bg-accent hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed text-white p-3 rounded-2xl transition-all shadow-lg",
+    counter: "text-[11px] text-muted",
+    statusMuted: "text-[11px] text-muted",
+    statusLink: "text-[11px] text-secondary underline",
+  },
+  candy: {
+    root: "flex h-dvh flex-col overflow-hidden overscroll-none bg-app-gradient",
+    header: "shrink-0 bg-header-gradient border-b border-border",
+    headerTitle: "font-display text-base font-bold text-white truncate",
+    bubbleMine: "bg-accent text-white rounded-br-md",
+    bubbleTheirs: "bg-surface-light text-slate-100 rounded-bl-md border border-border",
+    reactionPillActive: "bg-accent/20 border-accent text-white",
+    reactionPillIdle: "bg-surface-light/60 border-border text-slate-200 hover:bg-surface-light",
+    picker: "border-border bg-surface/95",
+    pickerBtn: "hover:bg-surface-light focus-visible:ring-secondary",
+    timeLabel: "text-[11px] text-muted px-1 select-none",
+    newMsgToast: "bg-accent text-white",
+    skeletonBubble: "bg-surface-light/50",
+    composer:
+      "shrink-0 border-t border-border bg-surface/80 backdrop-blur-lg px-4 py-3 flex flex-col gap-2",
+    errorText: "text-xs text-red-400",
+    replyBar:
+      "flex items-start justify-between gap-2 rounded-xl border border-border bg-surface-light/70 px-3 py-2",
+    replyLabel: "text-[11px] uppercase tracking-wide text-secondary",
+    replyText: "text-xs text-slate-200 truncate",
+    replyCancel: "shrink-0 text-muted hover:text-white transition",
+    input:
+      "flex-1 resize-none bg-surface-light border border-border rounded-3xl px-4 py-3 text-sm text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent transition max-h-32 overflow-y-auto",
+    sendBtn:
+      "btn-squish shrink-0 bg-accent hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed text-white p-3 rounded-full transition-all shadow-lg",
+    counter: "text-[11px] text-muted",
+    statusMuted: "text-[11px] text-muted",
+    statusLink: "text-[11px] text-secondary underline",
+  },
+};
+
 type ReplyTarget = {
   id: string;
   content: string;
   is_owner: boolean;
 };
-
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
-};
-
-function isStandaloneDisplayMode(): boolean {
-  if (typeof window === "undefined") return false;
-  return (
-    window.matchMedia("(display-mode: standalone)").matches ||
-    (window.navigator as Navigator & { standalone?: boolean }).standalone === true
-  );
-}
 
 // ─── Notification Bell ───────────────────────────────────────────────────────
 
@@ -121,7 +212,7 @@ function NotificationBell({
     >
       {active ? (
         /* Bell filled */
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-accent">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-secondary">
           <path fillRule="evenodd" d="M5.25 9a6.75 6.75 0 0 1 13.5 0v.75c0 2.123.8 4.057 2.118 5.52a.75.75 0 0 1-.573 1.23H3.705a.75.75 0 0 1-.573-1.23A8.973 8.973 0 0 0 5.25 9.75V9ZM8.159 18.846c.069.216.16.424.271.62a3.598 3.598 0 0 0 7.14 0 3.18 3.18 0 0 0 .27-.62H8.16Z" clipRule="evenodd" />
         </svg>
       ) : (
@@ -218,13 +309,13 @@ function updateMessageReaction(
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
 
-function MessageSkeleton() {
+function MessageSkeleton({ V }: { V: (typeof STYLES)[ChatVariant] }) {
   return (
     <div className="flex flex-col gap-3 px-4 py-4">
       {[false, true, false, true, false].map((right, i) => (
         <div key={i} className={`flex ${right ? "justify-end" : "justify-start"}`}>
           <div
-            className={`h-10 rounded-2xl animate-pulse bg-surface-light/50 ${
+            className={`h-10 rounded-2xl animate-pulse ${V.skeletonBubble} ${
               right ? "w-40 rounded-br-md" : "w-52 rounded-bl-md"
             }`}
           />
@@ -236,7 +327,7 @@ function MessageSkeleton() {
 
 // ─── Relative-time label that refreshes every 30 s ───────────────────────────
 
-function TimeLabel({ date }: { date: string }) {
+function TimeLabel({ date, className }: { date: string; className: string }) {
   const [label, setLabel] = useState(() => relativeTime(date));
 
   useEffect(() => {
@@ -244,9 +335,7 @@ function TimeLabel({ date }: { date: string }) {
     return () => clearInterval(id);
   }, [date]);
 
-  return (
-    <span className="text-[11px] text-muted px-1 select-none">{label}</span>
-  );
+  return <span className={className}>{label}</span>;
 }
 
 // ─── Bubble ──────────────────────────────────────────────────────────────────
@@ -256,6 +345,7 @@ function Bubble({
   repliedMessage,
   isMine,
   isOwnerView,
+  variant,
   onToggleReaction,
   onSwipeReply,
   isReactionBusy,
@@ -264,10 +354,19 @@ function Bubble({
   repliedMessage?: ReplyTarget | null;
   isMine: boolean;
   isOwnerView: boolean;
+  variant: ChatVariant;
   onToggleReaction: (messageId: string, emoji: string, hasReacted: boolean) => void;
   onSwipeReply: (message: ReplyTarget) => void;
   isReactionBusy: (messageId: string, emoji: string) => boolean;
 }) {
+  const V = STYLES[variant];
+  // In-bubble reply preview — both variants use dark bubbles for "mine" and
+  // dark surfaces for "theirs", so white-on-dark preview text works everywhere.
+  const replyPreview = {
+    box: "mb-2 px-2.5 py-1.5 rounded-lg bg-black/20 border border-white/15",
+    label: "text-[10px] uppercase tracking-wide text-white/70 mb-0.5",
+    text: "text-xs text-white/85 break-words",
+  };
   const reactions = message.reactions ?? [];
   const [pickerOpen, setPickerOpen] = useState(false);
   const bubbleRef = useRef<HTMLDivElement>(null);
@@ -377,9 +476,7 @@ function Bubble({
       ) : (
         <div
           className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words transition-opacity
-            ${isMine
-              ? "bg-accent text-white rounded-br-md"
-              : "bg-surface-light text-slate-100 rounded-bl-md border border-border"}
+            ${isMine ? V.bubbleMine : V.bubbleTheirs}
             ${message.pending ? "opacity-50" : "opacity-100"}
             ${message.failed ? "!bg-red-900/60 text-red-300" : ""}
           `}
@@ -392,11 +489,11 @@ function Bubble({
           onClick={handleBubbleClick}
         >
           {message.reply_to_message_id && repliedMessage && (
-            <div className="mb-2 px-2.5 py-1.5 rounded-lg bg-black/20 border border-white/15">
-              <p className="text-[10px] uppercase tracking-wide text-white/70 mb-0.5">
+            <div className={replyPreview.box}>
+              <p className={replyPreview.label}>
                 Replying to
               </p>
-              <p className="text-xs text-white/85 break-words">
+              <p className={replyPreview.text}>
                 {repliedMessage.content}
               </p>
             </div>
@@ -419,9 +516,7 @@ function Bubble({
               onClick={() => onToggleReaction(message.id, reaction.emoji, reaction.reactedByMe)}
               disabled={isReactionBusy(message.id, reaction.emoji)}
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition
-                ${reaction.reactedByMe
-                  ? "bg-accent/20 border-accent text-white"
-                  : "bg-surface-light/60 border-border text-slate-200 hover:bg-surface-light"}
+                ${reaction.reactedByMe ? V.reactionPillActive : V.reactionPillIdle}
                 ${isReactionBusy(message.id, reaction.emoji) ? "opacity-50 cursor-wait" : ""}
               `}
             >
@@ -433,8 +528,8 @@ function Bubble({
       )}
       {!message.pending && (
         <div
-          className={`absolute top-full mt-1 z-10 flex items-center gap-1 rounded-full border border-border
-            bg-surface/95 backdrop-blur px-1.5 py-1 shadow-lg transition
+          className={`absolute top-full mt-1 z-10 flex items-center gap-1 rounded-full border ${V.picker}
+            backdrop-blur px-1.5 py-1 shadow-lg transition
             ${pickerOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}
             ${isMine ? "right-0" : "left-0"}
           `}
@@ -452,7 +547,7 @@ function Bubble({
               }}
               disabled={isReactionBusy(message.id, emoji)}
               className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-sm transition
-                hover:bg-surface-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent
+                focus-visible:outline-none focus-visible:ring-2 ${V.pickerBtn}
                 ${isReactionBusy(message.id, emoji) ? "opacity-50 cursor-wait" : ""}
               `}
               aria-label={`React with ${emoji}`}
@@ -462,7 +557,7 @@ function Bubble({
           ))}
         </div>
       )}
-      {!message.pending && <TimeLabel date={message.created_at} />}
+      {!message.pending && <TimeLabel date={message.created_at} className={V.timeLabel} />}
     </div>
   );
 }
@@ -478,7 +573,11 @@ export default function ChatView({
   header,
   aboveComposer,
   inputPlaceholder,
+  variant = "dark",
+  starterTemplates = STARTER_TEMPLATES,
 }: Props) {
+  const V = STYLES[variant];
+  const isCandy = variant === "candy";
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -486,10 +585,14 @@ export default function ChatView({
   const [newMessageToast, setNewMessageToast] = useState(false);
   const [reactionBusy, setReactionBusy] = useState<Record<string, boolean>>({});
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
-  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
-  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
-  const [installing, setInstalling] = useState(false);
   const [showPushPopup, setShowPushPopup] = useState(false);
+  // Candy-only celebration state (first successful send in a conversation)
+  const [confettiParticles, setConfettiParticles] = useState<ConfettiParticle[] | null>(null);
+  const [showSentCard, setShowSentCard] = useState(false);
+  // Dice: retrigger the wiggle animation per press via key remount
+  const [diceKey, setDiceKey] = useState(0);
+  const lastTemplateRef = useRef<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -515,7 +618,10 @@ export default function ChatView({
       push.permission === "default" &&
       !isDismissed
     ) {
-      const timer = setTimeout(() => setShowPushPopup(true), 1500);
+      const timer = setTimeout(() => {
+        // Don't stack on top of the one-time install invite popup
+        if (!isInstallPromptOpen()) setShowPushPopup(true);
+      }, 1500);
       return () => clearTimeout(timer);
     }
   }, [loaded, push.supported, push.isSubscribed, push.permission, slug]);
@@ -639,51 +745,23 @@ export default function ChatView({
     setReplyTo(message);
   }, []);
 
-  useEffect(() => {
-    if (isOwnerView) return;
-    if (isStandaloneDisplayMode()) return;
+  // ── Dice: insert a starter template (candy variant only) ──────────────────
+  // Never destroys user-typed text: it only writes when the composer is empty
+  // or still holds the previously inserted template; otherwise it renders
+  // disabled so the affordance is honest.
+  const diceDisabled = input.trim().length > 0 && input !== lastTemplateRef.current;
 
-    const onBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      setInstallPromptEvent(event as BeforeInstallPromptEvent);
-      setShowInstallPrompt(true);
-    };
-
-    const onAppInstalled = () => {
-      setInstallPromptEvent(null);
-      setShowInstallPrompt(false);
-    };
-
-    const hintTimer = window.setTimeout(() => {
-      if (!isStandaloneDisplayMode()) {
-        setShowInstallPrompt(true);
-      }
-    }, 1200);
-
-    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt as EventListener);
-    window.addEventListener("appinstalled", onAppInstalled);
-
-    return () => {
-      window.clearTimeout(hintTimer);
-      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt as EventListener);
-      window.removeEventListener("appinstalled", onAppInstalled);
-    };
-  }, [isOwnerView]);
-
-  const handleInstallClick = useCallback(async () => {
-    if (!installPromptEvent) return;
-    try {
-      setInstalling(true);
-      await installPromptEvent.prompt();
-      const choice = await installPromptEvent.userChoice;
-      if (choice.outcome === "accepted") {
-        setShowInstallPrompt(false);
-      }
-      setInstallPromptEvent(null);
-    } finally {
-      setInstalling(false);
-    }
-  }, [installPromptEvent]);
+  const handleDice = useCallback(() => {
+    const currentIdx = lastTemplateRef.current
+      ? starterTemplates.indexOf(lastTemplateRef.current)
+      : -1;
+    const nextIdx = nextRandomIndex(currentIdx, starterTemplates.length);
+    const template = starterTemplates[nextIdx];
+    lastTemplateRef.current = template;
+    setInput(template);
+    setDiceKey((k) => k + 1);
+    textareaRef.current?.focus();
+  }, [starterTemplates]);
 
   // ── Detect whether user is scrolled to the bottom ─────────────────────────
   useEffect(() => {
@@ -1069,6 +1147,18 @@ export default function ChatView({
           prev.map((m) => (m.id === optimisticId ? { ...m, pending: false } : m))
         );
       }
+
+      // First-send celebration (sender side only): confetti + one-shot card
+      // nudging them to share their own auto-provisioned link.
+      // localStorage guard keeps it to exactly once per conversation.
+      if (isCandy && !isOwnerView && conversationId) {
+        const celebratedKey = `wolow:celebrated:${conversationId}`;
+        if (!localStorage.getItem(celebratedKey)) {
+          localStorage.setItem(celebratedKey, "1");
+          setConfettiParticles(makeConfettiParticles());
+          setShowSentCard(true);
+        }
+      }
     } catch (err) {
       setMessages((prev) =>
         prev.map((m) => (m.id === optimisticId ? { ...m, pending: false, failed: true } : m))
@@ -1116,76 +1206,61 @@ export default function ChatView({
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden overscroll-none bg-app-gradient">
-      {/* Header */}
-      <header className="shrink-0 bg-header-gradient border-b border-border">
+    <div className={V.root}>
+      {/* Header — compact single row: back · avatar · name + trust line · bell */}
+      <header className={V.header}>
         {header ?? (
-          <div className="px-4 py-3.5">
-            <p className="text-[10px] text-muted text-center uppercase tracking-[0.2em]">
-              anonymous message for
-            </p>
-            <div className="flex items-center justify-center gap-2">
-              <h1 className="text-base font-bold text-white text-center truncate">
+          <div className="flex items-center gap-2.5 px-3 py-2.5">
+            {!isOwnerView && (
+              <Link
+                href="/"
+                className="shrink-0 w-9 h-9 rounded-full bg-surface-light/60 flex items-center justify-center text-slate-400 hover:text-white hover:bg-surface-light transition-all"
+                aria-label="Back to my inbox"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className="w-5 h-5"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M17 10a.75.75 0 01-.75.75H5.612l4.158 3.96a.75.75 0 11-1.04 1.08l-5.5-5.25a.75.75 0 010-1.08l5.5-5.25a.75.75 0 111.04 1.08L5.612 9.25H16.25A.75.75 0 0117 10z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </Link>
+            )}
+            {isCandy && (
+              <div
+                className="anim-pop-in shrink-0 flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-accent font-display text-base font-bold text-white select-none"
+                aria-hidden="true"
+              >
+                {displayName.trim().charAt(0).toUpperCase() || "💬"}
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <h1 className={V.headerTitle}>
                 {displayName}
               </h1>
-              <NotificationBell slug={slug} role={isOwnerView ? "owner" : "visitor"} conversationId={conversationId} />
-            </div>
-            {!isOwnerView && (
-              <div className="mt-3 flex flex-col items-center gap-2">
-                {showInstallPrompt && (
-                  <div className="w-full max-w-sm rounded-2xl border border-white/20 bg-surface-light/70 backdrop-blur-md px-3 py-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-[11px] text-slate-200 leading-snug">
-                        Install Wolow for faster access and instant notifications.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setShowInstallPrompt(false)}
-                        className="text-muted hover:text-white transition"
-                        aria-label="Dismiss install prompt"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    {installPromptEvent ? (
-                      <button
-                        type="button"
-                        onClick={handleInstallClick}
-                        disabled={installing}
-                        className="mt-2 w-full rounded-xl bg-accent px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-                      >
-                        {installing ? "Opening installer..." : "Install app"}
-                      </button>
-                    ) : (
-                      <p className="mt-2 text-[11px] text-muted">
-                        Open your browser menu and tap "Add to Home Screen".
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                <a
-                  href="/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-full border border-border bg-surface-light px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-surface hover:text-white"
-                >
-                  <span>Create your own link</span>
+              {!isOwnerView && (
+                <p className="flex items-center gap-1 text-[11px] text-muted truncate">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 20 20"
                     fill="currentColor"
-                    className="h-4 w-4"
+                    className="w-3 h-3 shrink-0 text-emerald-400"
+                    aria-hidden="true"
                   >
-                    <path
-                      fillRule="evenodd"
-                      d="M3.25 10A.75.75 0 0 1 4 9.25h10.19L11.22 6.28a.75.75 0 1 1 1.06-1.06l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 1 1-1.06-1.06l2.97-2.97H4a.75.75 0 0 1-.75-.75Z"
-                      clipRule="evenodd"
-                    />
+                    <path fillRule="evenodd" d="M10 1a4.5 4.5 0 0 0-4.5 4.5V9H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5A4.5 4.5 0 0 0 10 1Zm3 8V5.5a3 3 0 1 0-6 0V9h6Z" clipRule="evenodd" />
                   </svg>
-                </a>
-              </div>
-            )}
+                  <span className="truncate">
+                    {isCandy ? "you're anonymous · encrypted" : "You're anonymous · Encrypted"}
+                  </span>
+                </p>
+              )}
+            </div>
+            <NotificationBell slug={slug} role={isOwnerView ? "owner" : "visitor"} conversationId={conversationId} />
           </div>
         )}
       </header>
@@ -1193,8 +1268,11 @@ export default function ChatView({
       {/* Scrollable message list */}
       <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {!loaded ? (
-          <MessageSkeleton />
+          <MessageSkeleton V={V} />
         ) : messages.length === 0 ? (
+          isCandy && !isOwnerView ? (
+            <PromptCard displayName={displayName} />
+          ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-8 text-center">
             <div className="w-12 h-12 rounded-full bg-surface-light flex items-center justify-center mb-1">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-muted">
@@ -1208,6 +1286,7 @@ export default function ChatView({
                 : "Share your link to get started!"}
             </p>
           </div>
+          )
         ) : (
           <div className="px-4 py-4 flex flex-col gap-3">
             {messages.map((msg) => (
@@ -1217,6 +1296,7 @@ export default function ChatView({
                 repliedMessage={msg.reply_to_message_id ? messageById.get(msg.reply_to_message_id) : null}
                 isMine={isOwnerView ? msg.is_owner : !msg.is_owner}
                 isOwnerView={isOwnerView}
+                variant={variant}
                 onToggleReaction={handleToggleReaction}
                 onSwipeReply={handleSwipeReply}
                 isReactionBusy={isReactionBusy}
@@ -1230,9 +1310,9 @@ export default function ChatView({
         {newMessageToast && (
           <button
             onClick={scrollToBottom}
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-accent
-                       text-white text-xs font-medium px-4 py-2 rounded-full shadow-lg
-                       transition-all animate-bounce"
+            className={`absolute bottom-3 left-1/2 -translate-x-1/2 ${V.newMsgToast}
+                       text-xs font-medium px-4 py-2 rounded-full shadow-lg
+                       transition-all animate-bounce`}
           >
             New message ↓
           </button>
@@ -1242,20 +1322,20 @@ export default function ChatView({
       {/* Input */}
       <form
         onSubmit={handleSubmit}
-        className="shrink-0 border-t border-border bg-surface/80 backdrop-blur-lg px-4 py-3 flex flex-col gap-2"
+        className={V.composer}
       >
         {aboveComposer}
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className={V.errorText}>{error}</p>}
         {replyTo && (
-          <div className="flex items-start justify-between gap-2 rounded-xl border border-border bg-surface-light/70 px-3 py-2">
+          <div className={V.replyBar}>
             <div className="min-w-0">
-              <p className="text-[11px] uppercase tracking-wide text-accent">Replying to</p>
-              <p className="text-xs text-slate-200 truncate">{replyTo.content}</p>
+              <p className={V.replyLabel}>Replying to</p>
+              <p className={V.replyText}>{replyTo.content}</p>
             </div>
             <button
               type="button"
               onClick={() => setReplyTo(null)}
-              className="shrink-0 text-muted hover:text-white transition"
+              className={V.replyCancel}
               aria-label="Cancel reply"
             >
               ✕
@@ -1263,7 +1343,22 @@ export default function ChatView({
           </div>
         )}
         <div className="flex gap-2 items-end">
+          {isCandy && (
+            <button
+              type="button"
+              onClick={handleDice}
+              disabled={diceDisabled}
+              className="btn-squish shrink-0 flex h-[46px] w-[46px] items-center justify-center rounded-full border border-border bg-surface-light transition hover:bg-surface disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Give me an idea"
+              title={diceDisabled ? "Clear the box to roll an idea" : "Roll a message idea"}
+            >
+              <span key={diceKey} className="anim-wiggle inline-block text-xl leading-none" aria-hidden="true">
+                🎲
+              </span>
+            </button>
+          )}
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -1275,16 +1370,13 @@ export default function ChatView({
             placeholder={inputPlaceholder ?? `Send ${displayName} an anonymous message…`}
             maxLength={MAX_LENGTH}
             rows={1}
-            className="flex-1 resize-none bg-surface-light border border-border rounded-2xl px-4 py-3 text-sm
-                       text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-accent
-                       focus:border-transparent transition max-h-32 overflow-y-auto"
+            className={V.input}
           />
           <button
             type="submit"
             disabled={input.trim().length === 0}
             title={undefined}
-            className="shrink-0 bg-accent hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed
-                       text-white p-3 rounded-2xl transition-all shadow-lg"
+            className={V.sendBtn}
             aria-label="Send message"
           >
             {hasPendingMessages ? (
@@ -1300,30 +1392,62 @@ export default function ChatView({
           {!e2ee.ready ? (
             e2ee.error === "owner_key_missing_restore_required" ||
             e2ee.error === "owner_key_conflict_restore_required" ? (
-              <a href="/settings" className="text-[11px] text-accent underline">
+              <Link href="/settings" className={V.statusLink}>
                 Restore your key to send messages
-              </a>
+              </Link>
             ) : e2ee.keyLoaded && !(isOwnerView ? e2ee.visitorKeyOnServer : e2ee.ownerKeyOnServer) ? (
-              <p className="text-[11px] text-muted">Unencrypted conversation</p>
+              <p className={V.statusMuted}>Unencrypted conversation</p>
             ) : (
-              <p className="text-[11px] text-muted animate-pulse">Setting up encryption…</p>
+              <p className={`${V.statusMuted} animate-pulse`}>Setting up encryption…</p>
             )
           ) : (
             <span />
           )}
-          <p className="text-[11px] text-muted">
+          <p className={V.counter}>
             {input.length}/{MAX_LENGTH}
           </p>
         </div>
       </form>
 
+      {/* First-send celebration (candy): confetti + growth loop card */}
+      {confettiParticles !== null && (
+        <Confetti particles={confettiParticles} onDone={() => setConfettiParticles(null)} />
+      )}
+      {showSentCard && (
+        <div className="fixed inset-x-0 bottom-24 z-50 flex justify-center px-6">
+          <div className="anim-pop-in w-full max-w-sm rounded-[28px] bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-display text-xl font-bold text-ink">sent 🎉</p>
+              <button
+                type="button"
+                onClick={() => setShowSentCard(false)}
+                className="text-ink/40 hover:text-ink transition"
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="mt-1 text-sm text-ink/70 leading-relaxed">
+              they won&apos;t know it was you. you&apos;ve got an inbox too — share
+              your link and get honest messages back.
+            </p>
+            <Link
+              href="/"
+              className="btn-squish mt-4 block w-full rounded-full bg-ink px-4 py-3 text-center font-display text-sm font-bold text-white shadow-lg"
+            >
+              share my link ✨
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Push notification popup */}
       {showPushPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
-          <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-[#1a1a2e] shadow-2xl p-6 flex flex-col items-center gap-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-surface shadow-2xl p-6 flex flex-col items-center gap-4 animate-in fade-in zoom-in-95 duration-200">
             {/* Bell icon */}
             <div className="w-14 h-14 rounded-full bg-accent/15 flex items-center justify-center">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 text-accent">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 text-secondary">
                 <path fillRule="evenodd" d="M5.25 9a6.75 6.75 0 0 1 13.5 0v.75c0 2.123.8 4.057 2.118 5.52a.75.75 0 0 1-.573 1.23H3.705a.75.75 0 0 1-.573-1.23A8.973 8.973 0 0 0 5.25 9.75V9ZM8.159 18.846c.069.216.16.424.271.62a3.598 3.598 0 0 0 7.14 0 3.18 3.18 0 0 0 .27-.62H8.16Z" clipRule="evenodd" />
               </svg>
             </div>

@@ -1,0 +1,21 @@
+-- ============================================================
+-- 028_fix_key_rpc_overload.sql
+-- Drop the legacy 3-parameter overload of set_owner_public_key.
+--
+-- Migration 026 used CREATE OR REPLACE FUNCTION with a *different*
+-- parameter list (added p_fingerprint, p_mark_rotated). In Postgres
+-- that creates a second overload instead of replacing the 019/025
+-- version, so both signatures coexisted:
+--
+--   set_owner_public_key(uuid, text, jsonb)                  -- 019/025
+--   set_owner_public_key(uuid, text, jsonb, text, boolean)   -- 026
+--
+-- PostgREST then rejects any 3-named-arg RPC call as ambiguous
+-- (PGRST203: "Could not choose the best candidate function"), which
+-- surfaced as 500 "Failed to store key" from PUT /api/rooms/[slug]/keys.
+--
+-- The 5-param version defaults p_fingerprint/p_mark_rotated, so it
+-- fully covers the legacy call shape. Drop the old one.
+-- ============================================================
+
+DROP FUNCTION IF EXISTS set_owner_public_key(UUID, TEXT, JSONB);

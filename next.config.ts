@@ -31,6 +31,13 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ['192.168.100.19'],
+  images: {
+    // Google account avatars on the profile screen. Served through the
+    // Next.js image optimizer (/_next/image), so CSP img-src 'self' still holds.
+    remotePatterns: [
+      { protocol: "https", hostname: "*.googleusercontent.com" },
+    ],
+  },
   async headers() {
     return [
       {

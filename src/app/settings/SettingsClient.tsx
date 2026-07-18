@@ -19,6 +19,7 @@ import { importWrappedKey, ImportKeyError } from "@/lib/crypto/import-key";
 import { uploadOwnerPublicKey } from "@/lib/crypto/upload-public-key";
 import { getLastBackup, markBackedUp } from "@/lib/crypto/last-backup";
 import KeyStatusCard from "@/components/KeyStatusCard";
+import BottomNav from "@/components/BottomNav";
 
 type Props = {
   slug: string;
@@ -161,12 +162,12 @@ export default function SettingsClient({
   }, [restoreFile, restorePass, slug]);
 
   return (
-    <div className="min-h-dvh bg-app-gradient text-slate-100">
-      <header className="bg-header-gradient border-b border-border px-4 py-4 flex items-center gap-3">
+    <div className="flex flex-col h-dvh bg-app-gradient text-slate-100">
+      <header className="shrink-0 bg-header-gradient border-b border-border px-4 py-4 flex items-center gap-3">
         <Link
-          href={`/${slug}/inbox`}
+          href="/profile"
           className="shrink-0 w-9 h-9 rounded-full bg-surface-light/60 flex items-center justify-center text-slate-400 hover:text-white hover:bg-surface-light transition"
-          aria-label="Back to inbox"
+          aria-label="Back to profile"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
             <path fillRule="evenodd" d="M17 10a.75.75 0 01-.75.75H5.612l4.158 3.96a.75.75 0 11-1.04 1.08l-5.5-5.25a.75.75 0 010-1.08l5.5-5.25a.75.75 0 111.04 1.08L5.612 9.25H16.25A.75.75 0 0117 10z" clipRule="evenodd" />
@@ -178,7 +179,8 @@ export default function SettingsClient({
         </div>
       </header>
 
-      <main className="px-4 py-6 max-w-2xl mx-auto flex flex-col gap-6">
+      <main className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="max-w-2xl mx-auto flex flex-col gap-6">
         <KeyStatusCard
           slug={slug}
           localFingerprint={localFingerprint}
@@ -208,7 +210,7 @@ export default function SettingsClient({
                 onChange={(e) => setBackupPass(e.target.value)}
                 disabled={backupBusy || keyMissing}
                 autoComplete="new-password"
-                className="mt-1 w-full bg-surface-light border border-border rounded-xl px-3 py-2.5 text-sm text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+                className="mt-1 w-full bg-surface-light border border-border rounded-xl px-3 py-2.5 text-sm text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary disabled:opacity-50"
                 placeholder="A passphrase only you know"
               />
             </label>
@@ -220,7 +222,7 @@ export default function SettingsClient({
                 onChange={(e) => setBackupPass2(e.target.value)}
                 disabled={backupBusy || keyMissing}
                 autoComplete="new-password"
-                className="mt-1 w-full bg-surface-light border border-border rounded-xl px-3 py-2.5 text-sm text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+                className="mt-1 w-full bg-surface-light border border-border rounded-xl px-3 py-2.5 text-sm text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary disabled:opacity-50"
                 placeholder="Type it again"
               />
             </label>
@@ -273,7 +275,7 @@ export default function SettingsClient({
                 onChange={(e) => setRestorePass(e.target.value)}
                 disabled={restoreBusy}
                 autoComplete="off"
-                className="mt-1 w-full bg-surface-light border border-border rounded-xl px-3 py-2.5 text-sm text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+                className="mt-1 w-full bg-surface-light border border-border rounded-xl px-3 py-2.5 text-sm text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary disabled:opacity-50"
                 placeholder="The passphrase from when you backed up"
               />
             </label>
@@ -285,7 +287,7 @@ export default function SettingsClient({
             <button
               type="submit"
               disabled={restoreBusy}
-              className="w-full rounded-xl border border-accent text-accent px-4 py-2.5 text-sm font-semibold transition hover:bg-accent hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full rounded-xl border border-secondary text-secondary px-4 py-2.5 text-sm font-semibold transition hover:bg-accent hover:border-accent hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {restoreBusy ? "Restoring…" : "Restore key"}
             </button>
@@ -297,7 +299,10 @@ export default function SettingsClient({
             How does end-to-end encryption work in Wolow?
           </Link>
         </div>
+        </div>
       </main>
+
+      <BottomNav slug={slug} />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getFunAnonymousName, getFunAnonymousEmoji } from "@/lib/fun-anonymous-name";
 import { relativeTime } from "@/lib/relative-time";
+import BottomNav from "@/components/BottomNav";
 
 export const metadata = { title: "Sent — Wolow" };
 
@@ -12,7 +13,7 @@ export default async function SentPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) redirect("/");
+  if (!user) redirect("/?next=/sent");
 
   // Fetch this user's sent conversations with the room they were sent to
   const { data: conversations } = await supabase
@@ -62,26 +63,8 @@ export default async function SentPage() {
   return (
     <div className="flex flex-col h-dvh bg-app-gradient">
       {/* Header */}
-      <header className="shrink-0 bg-header-gradient px-4 pt-5 pb-4 flex items-center gap-3">
-        {myRoom && (
-          <Link
-            href={`/${myRoom.slug}/inbox`}
-            className="p-1.5 rounded-xl hover:bg-surface-light transition-colors"
-            aria-label="Back to inbox"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={2}
-              stroke="currentColor"
-              className="w-5 h-5 text-slate-300"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
-            </svg>
-          </Link>
-        )}
-        <h1 className="text-lg font-bold text-white">Sent</h1>
+      <header className="shrink-0 bg-header-gradient px-4 pt-5 pb-4">
+        <h1 className="font-display text-lg font-bold text-white">Sent</h1>
       </header>
 
       {/* List */}
@@ -157,6 +140,9 @@ export default async function SentPage() {
           </div>
         )}
       </div>
+
+      {/* Bottom navigation */}
+      {myRoom && <BottomNav slug={myRoom.slug} />}
     </div>
   );
 }

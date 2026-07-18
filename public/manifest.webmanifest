@@ -4,8 +4,8 @@
   "description": "Anonymous chat rooms — share your link, get honest messages",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0B1120",
-  "theme_color": "#0B1120",
+  "background_color": "#140A26",
+  "theme_color": "#140A26",
   "orientation": "portrait-primary",
   "icons": [
     {

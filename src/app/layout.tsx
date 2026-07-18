@@ -1,8 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Baloo_2, Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import GlobalErrorListener from "@/components/GlobalErrorListener";
+import InstallPromptPopup from "@/components/InstallPromptPopup";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,6 +16,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const baloo = Baloo_2({
+  variable: "--font-baloo",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+});
+
 export const metadata: Metadata = {
   title: "Wolow",
   description: "Anonymous chat rooms — share your link, get honest messages",
@@ -25,13 +32,16 @@ export const metadata: Metadata = {
     title: "Wolow",
   },
   icons: {
-    icon: "/icons/icon-192x192.png",
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icons/icon-192x192.png", type: "image/png", sizes: "192x192" },
+    ],
     apple: "/apple-touch-icon.png",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0B1120",
+  themeColor: "#140A26",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -47,12 +57,13 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${baloo.variable} h-full antialiased`}
     >
       <body suppressHydrationWarning className="min-h-full flex flex-col">
         <ErrorBoundary>
           <GlobalErrorListener />
           {children}
+          <InstallPromptPopup />
         </ErrorBoundary>
         <Script id="register-sw" strategy="afterInteractive">
           {`

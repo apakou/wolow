@@ -14,7 +14,7 @@ const FAQS: Faq[] = [
     a: (
       <>
         Wolow doesn&apos;t require you to sign in to send a message. The recipient sees a
-        randomly-generated nickname (like <span className="font-mono text-accent">Curious Otter</span>)
+        randomly-generated nickname (like <span className="font-mono text-secondary">Curious Otter</span>)
         instead of any real identity. We don&apos;t attach your IP address, browser
         fingerprint, or device ID to the messages we store. The same anonymous identity is
         reused for the duration of a conversation so the recipient can reply, but it has no
@@ -50,7 +50,7 @@ const FAQS: Faq[] = [
       <>
         Because your key lives only on this device, anything that wipes browser storage will
         permanently lock you out of older messages. From{" "}
-        <Link href="/settings" className="text-accent underline">Settings</Link> you can
+        <Link href="/settings" className="text-secondary underline">Settings</Link> you can
         download a small <span className="font-mono">.wolow-key</span> file protected by a
         passphrase you choose. Keep it in a password manager or secure cloud folder. To
         restore on a new device, upload the file and enter your passphrase.
@@ -64,7 +64,7 @@ const FAQS: Faq[] = [
         That message was encrypted with a previous version of your key (for example, before
         you cleared browser data and a new key was generated). If you saved a backup of the
         older key, restore it from{" "}
-        <Link href="/settings" className="text-accent underline">Settings</Link> to read
+        <Link href="/settings" className="text-secondary underline">Settings</Link> to read
         those older messages. Otherwise, those specific messages are unrecoverable — but
         new messages going forward will be readable normally.
       </>
@@ -128,7 +128,7 @@ export default function HelpPage() {
 
         <footer className="mt-10 text-center text-xs text-muted">
           Still stuck? Visit{" "}
-          <Link href="/settings" className="text-accent hover:underline">Settings</Link>{" "}
+          <Link href="/settings" className="text-secondary hover:underline">Settings</Link>{" "}
           to back up or restore your encryption key.
         </footer>
       </div>
