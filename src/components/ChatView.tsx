@@ -14,6 +14,7 @@ import { usePushNotifications } from "@/lib/push/use-push-notifications";
 import { isInstallPromptOpen } from "@/lib/pwa";
 import { reportError } from "@/lib/report-error";
 import { isDecryptError, type DecryptErrorReason } from "@/lib/crypto/decrypt-errors";
+import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
 import DecryptErrorBubble from "@/components/DecryptErrorBubble";
 import Link from "next/link";
 import Confetti, { makeConfettiParticles, type ConfettiParticle } from "@/components/Confetti";
@@ -62,6 +63,11 @@ type Props = {
   displayName: string;
   /** Optional conversation scope when set, only messages for this thread are shown */
   conversationId?: string;
+  /** True while the parent is still resolving the conversation scope (e.g. the
+   *  visitor's conversation is being created). Renders the full chat shell
+   *  immediately and keeps the loading skeleton confined to the message list
+   *  only data fetching, realtime and sending wait for the real scope. */
+  conversationPending?: boolean;
   /** True when the room owner is viewing (owner messages = right/blue).
    *  False when an anonymous sender is viewing (sender messages = right/blue). */
   isOwnerView?: boolean;
@@ -116,7 +122,6 @@ const STYLES: Record<
     replyCancel: string;
     input: string;
     sendBtn: string;
-    counter: string;
     statusMuted: string;
     statusLink: string;
   }
@@ -146,7 +151,6 @@ const STYLES: Record<
       "flex-1 resize-none bg-surface-light border border-border rounded-2xl px-4 py-3 text-base text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent transition max-h-32 overflow-y-auto disabled:opacity-50",
     sendBtn:
       "shrink-0 bg-accent hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed text-white p-3 rounded-2xl transition-all shadow-lg",
-    counter: "text-[11px] text-muted",
     statusMuted: "text-[11px] text-muted",
     statusLink: "text-[11px] text-secondary underline",
   },
@@ -175,7 +179,6 @@ const STYLES: Record<
       "flex-1 resize-none bg-surface-light border border-border rounded-3xl px-4 py-3 text-base text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent transition max-h-32 overflow-y-auto disabled:opacity-50",
     sendBtn:
       "btn-squish shrink-0 bg-accent hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed text-white p-3 rounded-full transition-all shadow-lg",
-    counter: "text-[11px] text-muted",
     statusMuted: "text-[11px] text-muted",
     statusLink: "text-[11px] text-secondary underline",
   },
@@ -598,6 +601,7 @@ export default function ChatView({
   slug,
   displayName,
   conversationId,
+  conversationPending = false,
   isOwnerView = false,
   header,
   aboveComposer,
@@ -651,6 +655,13 @@ export default function ChatView({
     }
     onActivity({ visitorMessages, ownerMessages });
   }, [messages, onActivity]);
+
+  // Chat is a fixed app shell: the document must never scroll (only the
+  // message list does). Without this, focusing the composer on mobile lets
+  // the browser pan the page to reveal the input, pushing the header
+  // off-screen. Scoped to chat screens; restored on unmount so
+  // body-scrolling pages (/, /help, /welcome) keep working.
+  useDocumentScrollLock();
 
   // Show push popup once messages load, if not yet subscribed and not recently dismissed
   useEffect(() => {
@@ -829,6 +840,9 @@ export default function ChatView({
 
   // ── Fetch existing messages (also used for retry and reconnect catch-up) ──
   const fetchMessages = useCallback(async () => {
+    // Scope not resolved yet the list-area skeleton stays up (loaded=false)
+    // and the effect re-runs once conversationId arrives.
+    if (conversationPending) return;
     const qs = conversationId ? `?conversation_id=${conversationId}` : "";
     try {
       const res = await fetch(`/api/rooms/${slug}/messages${qs}`);
@@ -852,7 +866,7 @@ export default function ChatView({
       setLoadError(true);
       setLoaded(true);
     }
-  }, [slug, conversationId, decryptAll]);
+  }, [slug, conversationId, conversationPending, decryptAll]);
 
   const fetchMessagesRef = useRef(fetchMessages);
   useEffect(() => {
@@ -903,6 +917,10 @@ export default function ChatView({
 
   // ── Realtime subscription ─────────────────────────────────────────────────
   useEffect(() => {
+    // Wait for the conversation scope subscribing at room level here would
+    // leak other visitors' threads into this view. The initial fetch that
+    // runs on scope arrival catches anything sent in the meantime.
+    if (conversationPending) return;
     const supabase = createClient();
     let disposed = false;
     let hadDrop = false;
@@ -1126,7 +1144,7 @@ export default function ChatView({
       channelRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [roomId, conversationId]);
+  }, [roomId, conversationId, conversationPending]);
 
   // ── Auto-scroll when at bottom ────────────────────────────────────────────
   useEffect(() => {
@@ -1149,7 +1167,7 @@ export default function ChatView({
   // ── Submit ────────────────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (composerDisabled) return;
+    if (composerDisabled || conversationPending) return;
     const content = input.trim();
     if (!content) return;
 
@@ -1385,7 +1403,9 @@ export default function ChatView({
                 </p>
               )}
             </div>
-            <NotificationBell slug={slug} role={isOwnerView ? "owner" : "visitor"} conversationId={conversationId} />
+            {!conversationPending && (
+              <NotificationBell slug={slug} role={isOwnerView ? "owner" : "visitor"} conversationId={conversationId} />
+            )}
           </div>
         )}
       </header>
@@ -1535,7 +1555,7 @@ export default function ChatView({
           />
           <button
             type="submit"
-            disabled={input.trim().length === 0 || composerDisabled}
+            disabled={input.trim().length === 0 || composerDisabled || conversationPending}
             title={undefined}
             className={V.sendBtn}
             aria-label="Send message"
@@ -1549,9 +1569,9 @@ export default function ChatView({
             )}
           </button>
         </div>
-        <div className="flex justify-between items-center">
-          {!e2ee.ready ? (
-            e2ee.error === "owner_key_missing_restore_required" ||
+        {!e2ee.ready && (
+          <div className="flex items-center">
+            {e2ee.error === "owner_key_missing_restore_required" ||
             e2ee.error === "owner_key_conflict_restore_required" ? (
               <Link href="/settings" className={V.statusLink}>
                 Restore your key to send messages
@@ -1564,14 +1584,9 @@ export default function ChatView({
               <p className={V.statusMuted}>Unencrypted conversation</p>
             ) : (
               <p className={`${V.statusMuted} animate-pulse`}>Setting up encryption…</p>
-            )
-          ) : (
-            <span />
-          )}
-          <p className={V.counter}>
-            {input.length}/{MAX_LENGTH}
-          </p>
-        </div>
+            )}
+          </div>
+        )}
       </form>
 
       {/* Push subscription feedback toast */}

@@ -1,3 +1,115 @@
+# Fixed chat header + remove char counter — Plan (Jul 2026)
+
+Request: (1) top navbar must never scroll — only the chat body scrolls;
+(2) remove the visible character counter.
+
+Finding: ChatView already uses the app-shell pattern (`h-dvh` root,
+`overflow-hidden`, `shrink-0` header, `flex-1 overflow-y-auto` list), so the
+header scrolling away is document-level panning: on mobile, when the keyboard
+opens the browser pans/scrolls the page to reveal the focused textarea,
+pushing the header off-screen (Android default `interactive-widget=
+resizes-visual`; iOS pans too). Desktop body never scrolls (root fits dvh).
+
+- [x] 1. `layout.tsx`: `viewport.interactiveWidget = "resizes-content"` so the
+      layout viewport (and `h-dvh`) shrinks when the keyboard opens instead of
+      the browser panning the header off-screen.
+- [x] 2. `ChatView.tsx`: lock document scroll while a chat screen is mounted
+      (`html/body overflow:hidden` effect with cleanup) — only the message
+      list can scroll; keyboard/scroll-into-view can never pan the navbar
+      away. Scoped: body-scrolling pages (/, /help, /welcome) unaffected.
+- [x] 3. `ChatView.tsx`: remove the `{input.length}/{MAX_LENGTH}` counter;
+      status row renders only when an e2ee status exists; drop `counter` from
+      the variant map type + both variants. Keep `maxLength` enforcement.
+- [x] 4. Verify: `tsc --noEmit` + eslint (dev server running → no `next build`,
+      lesson #10).
+
+## Review
+
+- `tsc --noEmit` clean; eslint 0 errors (3 pre-existing ChatView
+  exhaustive-deps warnings, unchanged).
+- Counter removed but the 1000-char `maxLength` still silently enforces the
+  limit at the textarea level.
+- Bonus: when encryption is ready the status row no longer renders an empty
+  flex row, so the composer loses one stray `gap-2` of dead space.
+- Scroll lock restores previous inline overflow values on unmount — /, /help,
+  /welcome (body-scrolling pages) unaffected.
+- iOS caveat: Safari ignores `interactive-widget` and may still visually pan
+  while the keyboard is open, but with the document locked it snaps back and
+  the header stays in layout. Full fix would need a visualViewport JS resize
+  handler — deferred unless reported.
+
+### Follow-up: bottom tab bar must not scroll either
+
+- [x] Extracted the inline ChatView effect into a shared
+      `src/lib/use-document-scroll-lock.ts` hook (restores previous inline
+      overflow on unmount; safe across route changes — React runs removed
+      components' cleanups before new effects in the same commit).
+- [x] Mounted the hook in `BottomNav` — by design it only renders inside
+      `h-dvh` app shells, so this locks /sent, /profile, /settings and
+      /[slug]/inbox in one place (future shell screens get it for free).
+      `BottomNavSkeleton` (loading.tsx) intentionally not locked.
+- [x] Verified: `tsc --noEmit` clean, eslint 0 errors.
+
+---
+
+# Scoped loading states for real-time chat — Plan (Jul 2026)
+
+Request: real-time chat over WebSockets + loading confined to components whose
+state is actually changing.
+
+Finding: realtime already exists (Supabase Realtime WebSocket: broadcast +
+postgres_changes + reconnect catch-up in ChatView/OwnerInbox; publications
+enabled in migrations 001/002/008). The gap is the visitor flow: ChatRoom
+shows a FULL-PAGE spinner while POST /conversations resolves, then ChatView
+shows a second skeleton. Header + composer depend on nothing — only the
+message list is waiting on data.
+
+- [x] 1. `ChatView.tsx`: add `conversationPending?: boolean` prop — while true:
+      skip message fetch (list-area skeleton stays), skip realtime
+      subscription, block submit + disable send button, hide NotificationBell
+      (visitor push subscription needs conversationId).
+- [x] 2. `ChatRoom.tsx`: drop the full-page spinner branch; render ChatView
+      immediately with `conversationPending={!conversationId}` so the chat
+      shell (header/composer) paints instantly and only the message list
+      shows a skeleton.
+- [x] 3. Verify: `tsc --noEmit` clean, eslint clean, behavior review.
+
+## Review
+
+### What changed
+- **ChatView `conversationPending` prop**: the chat shell (header, composer,
+  typing, dice) renders and works immediately; only the message list — the one
+  component whose state is actually loading — shows the skeleton. While
+  pending: message fetch early-returns (`loaded` stays false), the realtime
+  channel isn't opened (a room-level subscription would leak other visitors'
+  threads), submit is guarded, the send button is disabled, and the
+  notification bell is hidden (visitor push subs are conversation-scoped).
+  When the conversation id arrives, the changed `fetchMessages` identity
+  re-triggers the fetch effect and the realtime effect subscribes with the
+  proper conversation filter — no gap, since the initial fetch catches
+  anything sent in the meantime.
+- **ChatRoom**: full-page spinner removed. Visitors now see header + composer
+  on first paint instead of spinner → skeleton → content. `SaveChatPrompt` and
+  `AnonymityExplainer` gate on `conversationId` (they require it).
+- **use-push-notifications**: enforced the documented contract — visitor
+  subscriptions never fire without a `conversationId` (silent auto-resubscribe
+  could previously race the conversation POST now that ChatView mounts
+  earlier).
+
+### Notes
+- Realtime was NOT added in this pass — it already existed (Supabase Realtime
+  WebSocket: instant `broadcast` delivery + `postgres_changes` authoritative
+  sync + reconnect catch-up + visibility refetch). "Webhooks" in the request
+  mapped to WebSockets, which is what's in place.
+- Verified: `tsc --noEmit` clean, eslint 0 errors (3 pre-existing ChatView
+  warnings), `next build` passes. Owner thread/inbox behavior unchanged
+  (`conversationPending` defaults to false).
+- Accepted trade-off: if conversation init fails, the full error card still
+  replaces the screen (error state, not loading state) — a typed draft is
+  lost in that rare case.
+
+---
+
 # Anonymous visitor access — Plan (Jul 2026)
 
 User feedback: visitors clicking a shared room link land on the Google login

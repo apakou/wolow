@@ -78,13 +78,18 @@ export function usePushNotifications(
   useEffect(() => {
     if (!supported || isSubscribed || loading) return;
     if (permission !== "granted") return;
+    // Visitor subscriptions are scoped to a conversation wait until the
+    // parent has resolved it (ChatView can mount before the conversation
+    // exists) so we never register an unscoped visitor subscription.
+    if (role === "visitor" && !conversationId) return;
     void subscribe();
     // subscribe is stable enough guarded by `loading` flag inside.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supported, isSubscribed, permission]);
+  }, [supported, isSubscribed, permission, role, conversationId]);
 
   const subscribe = useCallback(async (): Promise<PushSubscribeResult> => {
     if (!supported || loading) return "failed";
+    if (role === "visitor" && !conversationId) return "failed";
     setLoading(true);
 
     try {

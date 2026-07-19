@@ -47,6 +47,9 @@ export const viewport: Viewport = {
   // No maximumScale: pinch-zoom must stay available (WCAG 1.4.4). iOS
   // focus-zoom is avoided by keeping text inputs at 16px (text-base).
   viewportFit: "cover",
+  // On-screen keyboard shrinks the layout viewport (and h-dvh) instead of
+  // panning the page — keeps fixed headers/composers visible while typing.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({

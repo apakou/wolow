@@ -99,26 +99,22 @@ export default function ChatRoom({ roomId, slug, displayName, hasSession, isAnon
     );
   }
 
-  if (!conversationId) {
-    return (
-      <div className="flex items-center justify-center h-dvh bg-app-gradient">
-        <div className="h-7 w-7 border-2 border-border border-t-accent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
+  // No full-page spinner while the conversation initializes: the chat shell
+  // (header + composer) renders instantly and only the message list the
+  // component whose state is actually loading shows a skeleton.
   return (
     <ChatView
       roomId={roomId}
       slug={slug}
       displayName={displayName}
-      conversationId={conversationId}
+      conversationId={conversationId ?? undefined}
+      conversationPending={!conversationId}
       variant="candy"
       inputPlaceholder="say anything… it's anonymous 👀"
       onActivity={handleActivity}
       aboveComposer={
         <>
-          {isAnonymous && activity.visitorMessages > 0 && (
+          {isAnonymous && conversationId && activity.visitorMessages > 0 && (
             <SaveChatPrompt
               slug={slug}
               conversationId={conversationId}
@@ -126,7 +122,9 @@ export default function ChatRoom({ roomId, slug, displayName, hasSession, isAnon
               ownerReplied={activity.ownerMessages > 0}
             />
           )}
-          <AnonymityExplainer conversationId={conversationId} recipientName={displayName} />
+          {conversationId && (
+            <AnonymityExplainer conversationId={conversationId} recipientName={displayName} />
+          )}
           {isAnonymous && activity.visitorMessages === 0 && (
             <p className="text-center text-[11px] text-muted">
               This is your link?{" "}

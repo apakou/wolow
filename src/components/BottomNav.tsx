@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useDocumentScrollLock } from "@/lib/use-document-scroll-lock";
 
 type Props = {
   /** The signed-in owner's room slug used for the inbox tab link. */
@@ -46,6 +47,11 @@ export function BottomNavSkeleton() {
  */
 export default function BottomNav({ slug }: Props) {
   const pathname = usePathname();
+
+  // Every screen with the tab bar is a fixed app shell (h-dvh column with
+  // one internal scroll region): lock document scrolling so the tab bar and
+  // header can never be panned off-screen (e.g. mobile keyboard on inputs).
+  useDocumentScrollLock();
 
   const tabs: { key: TabKey; href: string; label: string; active: boolean }[] = [
     {
