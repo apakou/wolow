@@ -1,0 +1,56 @@
+{
+  "names": [
+    {
+      "id": "4f2f38f3-7f6e-4b1a-9a0e-2f6d3c5b7a90",
+      "name": "Lucky Shark",
+      "emoji": "🦈"
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000000",
+      "name": "Sunny Raven",
+      "emoji": "🐦"
+    },
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Swift Toucan",
+      "emoji": "🦜"
+    },
+    {
+      "id": "zz-top",
+      "name": "Velvet Lynx",
+      "emoji": "🐱"
+    },
+    {
+      "id": "wolow",
+      "name": "Mellow Lynx",
+      "emoji": "🐱"
+    },
+    {
+      "id": "9e107d9d-372b-4c81-a1f0-96f7c1c8d7aa",
+      "name": "Electric Cobra",
+      "emoji": "🐍"
+    }
+  ],
+  "initials": [
+    {
+      "n": "Amina Diallo",
+      "out": "AD"
+    },
+    {
+      "n": "plato",
+      "out": "PL"
+    },
+    {
+      "n": " x ",
+      "out": "X"
+    },
+    {
+      "n": "",
+      "out": "?"
+    },
+    {
+      "n": "Ada B C",
+      "out": "AB"
+    }
+  ]
+}

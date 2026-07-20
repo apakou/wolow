@@ -1,3 +1,142 @@
+# Wolow Mobile (Flutter) — Plan (Jul 2026)
+
+Decisions: monorepo `mobile/`, reuse Next.js API + bearer auth, full feature
+parity, iOS + Android, Riverpod. Crypto via `package:webcrypto` (BoringSSL,
+Web Crypto semantics) for byte-compatibility with the web client.
+
+## Phase 0 — Backend enablement (this repo)
+
+- [x] 0.1 Bearer auth: `src/lib/supabase/server.ts` header-aware
+      (`Authorization: Bearer` → global.headers for RLS + token-bound
+      `getUser()`); cookie path untouched; all routes unchanged.
+- [x] 0.2 `POST /api/rooms/provision`: idempotent find-or-create room for the
+      authed user (403 for anonymous; 23505 race re-read; rate-limited
+      creation only). Returns `{id, slug, display_name, needs_onboarding}`.
+      `provision` added to reserved slugs.
+- [x] 0.3 FCM push: migration 031 (`push_subscriptions.kind`, nullable
+      p256dh/auth_key + webpush CHECK), POST accepts `kind:"fcm"`,
+      push-notify branches webpush|FCM (`src/lib/push-fcm.ts`, firebase-admin
+      lazy + env-gated, kind-column select fallback pre-031).
+- [x] 0.4 Deep links: `public/.well-known/assetlinks.json` + AASA (placeholder
+      TEAMID/SHA256), AASA content-type header in next.config.ts.
+- [x] 0.5 Verified: tsc clean, eslint 0 errors, `next build` passes, live
+      bearer probe vs hosted (401 no-auth / 401 garbage / 403 anon gate /
+      200 RLS query).
+
+## Phase 1 — Flutter scaffold (`mobile/`) — DONE
+
+- [x] Project (org app.wolow, applicationId/bundle `app.wolow.mobile`),
+      Riverpod + go_router + supabase_flutter, dark theme, Baloo 2 + Geist.
+- [x] Env via --dart-define (`lib/core/env.dart`), ApiClient bearer + typed
+      errors, router with auth redirects + web-URL→route mapper.
+- [x] Utility ports with parity tests generated from the REAL web impl
+      (anonymous names/emoji, initials, slug rules, relative time, prompts).
+
+## Phase 2 — Auth & onboarding — DONE (code)
+
+- [x] Native Google (google_sign_in v7 → signInWithIdToken), sign-in screen,
+      3-step Welcome wizard (live slug availability via direct Supabase,
+      auto-suffix once, claim PATCH, copy, share), profile + sign-out,
+      anonymous-session gating in router.
+- [ ] Runtime prerequisite: Google OAuth client IDs (web/iOS/Android) added
+      to Supabase + passed as dart-defines.
+
+## Phase 3 — Chat core — DONE
+
+- [x] ChatController: full ChatView state-machine port (optimistic sends,
+      broadcast-before-POST, postgres_changes dedupe/replace-in-place,
+      refetch merge rule, reactions optimistic+realtime actor matching,
+      reconnect pill, app-resume refetch). 15 unit tests on the
+      reconciliation rules.
+- [x] ChatView UI: bubbles, swipe-to-reply (56px, direction per side),
+      long-press picker (react + reply), reaction pills, reply previews,
+      new-message toast, auto-scroll, composer (1000 cap, newline Enter).
+- [x] Inbox: realtime `inbox:{roomId}` bump-in-place, filters, unread
+      badges, block pill, share menu, mark-read; Thread screen with
+      block/unblock/report; Sent screen (direct Supabase, anon-friendly).
+
+## Phase 4 — E2EE — DONE (golden gate green)
+
+- [x] webcrypto: envelope encrypt/decrypt, RSA-OAEP-4096 keygen, PBKDF2-600k
+      backups, fingerprints byte-compatible with web.
+- [x] flutter_secure_storage keystore (`room:{slug}`, `conv:{id}`).
+- [x] E2eeManager: use-e2ee port (server-first, degrade-to-decrypt-only,
+      restore-required states, 409 conflict, re-fetch before send, 5s poll),
+      `ensureOwnerKey` inbox pre-generation with in-flight dedupe.
+- [x] Settings: fingerprint card, backup export via share sheet, restore with
+      two-step rotation confirm + force_rotate.
+- [x] **Golden vectors** (test/crypto_golden_test.dart, 15 tests): web
+      envelope decrypts in Dart both roles; wrong key → key_rotated; web
+      .wolow-key imports; Dart round-trips; fresh Dart keys interop with web
+      keys; fingerprints identical. Regenerate via
+      `node mobile/test/generate_crypto_vectors.mjs`.
+
+## Phase 5 — Visitor flow + deep links — DONE (code)
+
+- [x] VisitorRoomScreen: anonymous session with sign-in fallback (never
+      dead-ends), owner self-redirect, conversation upsert, dice, anonymity
+      explainer, save-chat banner (linkIdentity → wolow:// callback),
+      invitation card, per-conversation dismissal prefs.
+- [x] app_links: cold + warm links, auth-callback URLs excluded; Android
+      App Links + wolow scheme in manifest; iOS wolow scheme in Info.plist.
+- [ ] Runtime prerequisite: real SHA-256/TEAMID in well-known files;
+      iOS Associated Domains entitlement (Apple account).
+
+## Phase 6 — Push — DONE (code)
+
+- [x] PushService: FirebaseOptions from dart-define (no google-services.json
+      needed), permission states handled explicitly, token register/refresh
+      as `kind:"fcm"`, silent resubscribe, tap → data.url → route mapper,
+      foreground suppressed (realtime already live = web SW parity). Bells
+      in inbox + visitor chat.
+- [ ] Runtime prerequisite: Firebase project + FIREBASE_* dart-defines +
+      FIREBASE_SERVICE_ACCOUNT_JSON on the web deployment; APNs key for iOS.
+
+## Phase 7 — Polish & release — PARTIAL
+
+- [x] CI: .github/workflows/mobile.yml (analyze --fatal-infos + test).
+- [ ] App icons + splash (needs brand assets), screen-transition polish,
+      store metadata, decrypt-error per-reason bubbles copy pass,
+      backup-nudge modal, confetti.
+
+## Review
+
+### Verification evidence
+- Web: `tsc --noEmit` clean, eslint 0 errors (7 pre-existing warnings),
+  `next build` passes, live bearer-path probe against hosted Supabase.
+- Mobile: `flutter analyze` 0 issues, **59 tests pass** (24 utility parity,
+  15 chat state-machine, 15 crypto golden, 5 misc), **debug APK builds**
+  (includes webcrypto BoringSSL native build for Android).
+
+### Key decisions
+- Widget-owned ValueNotifier controllers for chat/inbox (clear lifecycle,
+  fake-injectable, avoids Riverpod 3 family API churn); Riverpod for
+  app-level state (session, room, repositories).
+- Parity strategy: golden vectors generated by executing the web's exact
+  Web Crypto parameters in node; Dart tests consume the fixtures. Same
+  pattern for the anonymous-name/initials vectors.
+- FirebaseOptions via dart-define keeps the Android build green without
+  google-services.json until a Firebase project exists.
+
+### Security notes
+- npm audit: `ws` high fixed via `npm audit fix` (8.21.1). REMAINING HIGH:
+  Next.js 16.2.1 advisories (DoS/cache-poisoning/XSS-nonce) — needs a
+  Next.js patch-version bump, pre-existing and out of this task's scope.
+  7 moderate remain (mostly firebase-admin transitive retry-request).
+- Bearer path never writes cookies; expired tokens = signed-out (mobile
+  refreshes via supabase_flutter).
+
+### Accepted trade-offs / follow-ups
+- Owner thread loads block-state via a full conversations fetch (small
+  extra GET; a dedicated endpoint would be cleaner).
+- Visitor "This is your link?" escape hatch shows before first message
+  regardless of message count (web gates on no-messages-yet).
+- Backup nudge modal, celebrated-confetti, decrypt-error bubble per-reason
+  copy, and the web's 3-day push-popup snooze are deferred to P7.
+- share_plus pinned to ^12 (win32 solver conflict with file_picker ^10).
+
+---
+
 # Fixed chat header + remove char counter — Plan (Jul 2026)
 
 Request: (1) top navbar must never scroll — only the chat body scrolls;

@@ -1,0 +1,27 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": ["TEAMID.app.wolow.mobile"],
+        "components": [
+          { "/": "/api/*", "exclude": true, "comment": "API routes stay in the browser/client" },
+          { "/": "/auth/*", "exclude": true, "comment": "Web OAuth callback must complete in the browser" },
+          { "/": "/_next/*", "exclude": true },
+          { "/": "/.well-known/*", "exclude": true },
+          { "/": "/help", "exclude": true },
+          { "/": "/settings", "exclude": true },
+          { "/": "/profile", "exclude": true },
+          { "/": "/sent", "exclude": true },
+          { "/": "/welcome", "exclude": true },
+          { "/": "/sw.js", "exclude": true },
+          { "/": "/manifest.webmanifest", "exclude": true },
+          { "/": "/*", "comment": "Room links /{slug} and inbox deep paths open the app" }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["TEAMID.app.wolow.mobile"]
+  }
+}

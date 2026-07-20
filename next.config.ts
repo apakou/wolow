@@ -51,6 +51,15 @@ const nextConfig: NextConfig = {
           { key: "Service-Worker-Allowed", value: "/" },
         ],
       },
+      {
+        // iOS Universal Links: the AASA file has no extension, so Next would
+        // serve it as octet-stream. Apple's CDN requires application/json.
+        source: "/.well-known/apple-app-site-association",
+        headers: [
+          { key: "Content-Type", value: "application/json" },
+          { key: "Cache-Control", value: "public, max-age=3600" },
+        ],
+      },
     ];
   },
 };

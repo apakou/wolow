@@ -39,6 +39,8 @@ export const RESERVED_SLUGS = new Set([
   "favicon",
   "robots",
   "sitemap",
+  // API sub-paths under /api/rooms/{slug} (would shadow static routes)
+  "provision",
   // Likely future routes & brand protection
   "about",
   "admin",

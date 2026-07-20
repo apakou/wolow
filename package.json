@@ -17,6 +17,7 @@
     "@tiptap/pm": "^3.21.0",
     "@tiptap/react": "^3.21.0",
     "@tiptap/starter-kit": "^3.21.0",
+    "firebase-admin": "^14.2.0",
     "isomorphic-dompurify": "^3.7.1",
     "nanoid": "^5.1.7",
     "next": "16.2.1",
